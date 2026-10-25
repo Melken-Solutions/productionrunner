@@ -37,8 +37,9 @@ For a future station network: browser clients on the shop-floor network reach a 
 
 | Entity | Responsibility |
 |---|---|
-| User | Unique username, password hash, explicit role set |
-| Ticket | Stable `JR-` identity, single PN/revision, quantity, tracking mode, serial inventory, instructions, state, version, creator/time |
+| User | Global individual identity: unique username and password hash |
+| Tenant / membership | Organization identity and per-user roles in that organization |
+| Ticket | Tenant-owned; stable `JR-` identity, single PN/revision, quantity, tracking mode, serial inventory, instructions, state, version, creator/time |
 | Operation | Ticket, unique sequence, instructions, completion actor/time |
 | Inspection | One final outcome per ticket, inspector, result, evidence/time |
 | Event | Ordered audit entry, ticket, actor, action, detail, UTC time |
@@ -75,3 +76,13 @@ Local evaluation still lacks login throttling, centralized identity/MFA, credent
 - [Flask security guidance](https://flask.palletsprojects.com/en/stable/web-security/): session-cookie and CSRF considerations.
 - [python-barcode supported formats](https://python-barcode.readthedocs.io/en/stable/supported-formats.html): Code 128 generation and checksum handling.
 - [python-barcode writers](https://python-barcode.readthedocs.io/en/stable/writers.html): SVG sizing and quiet-zone options.
+
+## Tenant isolation slice
+
+Login requires organization slug, individual username and password. The signed session stores the tenant ID only after membership verification; every request reloads membership and its roles. There is no implicit/default organization and no global role fallback. Switching organizations requires signing in again, rotating the CSRF token. An original pre-migration session cannot access protected routes.
+
+Tickets, operations, inspections and events carry tenant IDs. Queue, ticket, scan, traveler, barcode, production, inspection and audit reads/writes are scoped to the current membership. Known IDs from another organization return 404 to authorized action roles, just like unknown IDs. Form/query tenant fields never select ownership. Composite foreign keys link child records to their tenant-owned ticket and actors to membership in that tenant. Revocation clears membership roles rather than deleting historical identity links. SQLite foreign keys are enabled on application and provisioning connections.
+
+`migrate-tenancy` is an offline, explicit migration for the original MVP only. It makes a private, non-overwriting SQLite backup, rebuilds tables in one exclusive transaction, preserves legacy IDs/data, and checks foreign keys before commit. All old records go to the one explicitly named organization. It does not infer ownership or split previously mixed-company data. Stop writers before backup/migration and retain the prior application version for backup restoration.
+
+Application tenant isolation does not restrict a trusted database/file administrator. Existing production authentication/hosting limitations still apply. Provisioning and role-change audit events, PIN credentials, and serial execution remain pending.

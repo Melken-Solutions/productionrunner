@@ -13,15 +13,17 @@ def app(tmp_path):
     app = create_app({'TESTING': True, 'SECRET_KEY': 'test-only', 'DATABASE': str(tmp_path / 'test.sqlite3')})
     assert app.test_cli_runner().invoke(args=['init-db']).exit_code == 0
     with sqlite3.connect(app.config['DATABASE']) as conn:
+        conn.execute("INSERT INTO tenants(id,slug,name) VALUES(1,'alpha','Alpha')")
         for name, roles in [('planner', 'planner'), ('operator', 'operator,inspector'), ('inspector', 'inspector'), ('viewer', 'viewer'), ('admin', 'admin')]:
-            conn.execute('INSERT INTO users(username,password_hash,roles) VALUES(?,?,?)',
-                         (name, generate_password_hash('test-password-123'), roles))
+            user = conn.execute('INSERT INTO users(username,password_hash) VALUES(?,?)',
+                                (name, generate_password_hash('test-password-123')))
+            conn.execute('INSERT INTO memberships VALUES(1,?,?)', (user.lastrowid, roles))
     return app
 
 
-def sign_in(client, name):
+def sign_in(client, name, tenant="alpha"):
     client.get('/login')
-    assert post(client, '/login', username=name, password='test-password-123').status_code == 302
+    assert post(client, '/login', username=name, tenant=tenant, password='test-password-123').status_code == 302
 
 
 def post(client, path, **data):
@@ -52,7 +54,7 @@ def prepared(app):
 
 def complete_route(app, client, path):
     sign_in(client, 'operator')
-    operations = rows(app, 'SELECT * FROM operations ORDER BY sequence')
+    operations = rows(app, 'SELECT * FROM operations WHERE ticket_id=? ORDER BY sequence', (path.split('/')[-1],))
     for version, operation in enumerate(operations, 1):
         assert post(client, path + '/complete', version=str(version), operation_id=str(operation['id']), confirm='yes').status_code == 302
 
@@ -172,6 +174,6 @@ def test_concurrent_completion_records_once(app):
 
 def test_user_provisioning_rejects_invalid_roles_short_password_and_duplicate(app):
     runner = app.test_cli_runner()
-    assert runner.invoke(args=['add-user', 'new', '--roles', 'superuser', '--password', 'long-test-password']).exit_code != 0
-    assert runner.invoke(args=['add-user', 'new', '--roles', 'operator', '--password', 'short']).exit_code != 0
-    assert runner.invoke(args=['add-user', 'planner', '--roles', 'operator', '--password', 'long-test-password']).exit_code != 0
+    assert runner.invoke(args=['add-user', 'new', '--tenant', 'alpha', '--roles', 'superuser', '--password', 'long-test-password']).exit_code != 0
+    assert runner.invoke(args=['add-user', 'new', '--tenant', 'alpha', '--roles', 'operator', '--password', 'short']).exit_code != 0
+    assert runner.invoke(args=['add-user', 'planner', '--tenant', 'alpha', '--roles', 'operator', '--password', 'long-test-password']).exit_code != 0

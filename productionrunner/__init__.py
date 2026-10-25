@@ -8,10 +8,9 @@ from datetime import datetime, timezone, timedelta
 from functools import wraps
 from pathlib import Path
 
-import click
 from barcode import Code128
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for, Response
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
 
 def now():
@@ -30,7 +29,7 @@ def roles_required(*roles):
     def decorate(fn):
         @wraps(fn)
         def wrapped(*args, **kwargs):
-            if not g.user:
+            if not g.user or not g.tenant:
                 return redirect(url_for('login'))
             if roles and not set(roles).intersection(g.roles):
                 abort(403, 'Your role cannot perform this action.')
@@ -62,7 +61,11 @@ def create_app(config=None):
     def prepare():
         g.app_db = app.config['DATABASE']
         g.user = db().execute('SELECT * FROM users WHERE id=?', (session.get('user_id'),)).fetchone()
-        g.roles = g.user['roles'].split(',') if g.user else []
+        g.tenant = db().execute(
+            'SELECT t.*, m.roles FROM tenants t JOIN memberships m ON m.tenant_id=t.id '
+            'WHERE t.id=? AND m.user_id=? AND m.roles != ? ',
+            (session.get('tenant_id'), session.get('user_id'), '')).fetchone() if g.user else None
+        g.roles = g.tenant['roles'].split(',') if g.tenant else []
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         if request.method == 'POST' and not secrets.compare_digest(session['csrf'], request.form.get('csrf', '')):
@@ -89,11 +92,11 @@ def create_app(config=None):
         return render_template('error.html', error=error), error.code
 
     def event(ticket_id, action, detail=''):
-        db().execute('INSERT INTO events(ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?)',
-                     (ticket_id, g.user['id'], action, detail, now()))
+        db().execute('INSERT INTO events(tenant_id,ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?,?)',
+                     (g.tenant['id'], ticket_id, g.user['id'], action, detail, now()))
 
     def ticket_or_404(ticket_id):
-        ticket = db().execute('SELECT * FROM tickets WHERE id=?', (ticket_id,)).fetchone()
+        ticket = db().execute('SELECT * FROM tickets WHERE id=? AND tenant_id=?', (ticket_id, g.tenant['id'])).fetchone()
         if not ticket:
             abort(404, 'Unknown JobRunner traveler.')
         return ticket
@@ -105,43 +108,24 @@ def create_app(config=None):
             abort(409, 'This ticket changed. Reload before submitting again.')
         return ticket
 
-    @app.cli.command('init-db')
-    def init_db():
-        """Create missing tables without deleting existing data."""
-        with sqlite3.connect(app.config['DATABASE']) as connection:
-            connection.executescript(Path(app.root_path, 'schema.sql').read_text())
-        click.echo('Database initialized (existing data preserved).')
-
-    @app.cli.command('add-user')
-    @click.argument('username')
-    @click.option('--roles', required=True, help='Comma-separated planner,operator,inspector,admin,viewer')
-    @click.password_option()
-    def add_user(username, roles, password):
-        """Provision an individual account; no default passwords."""
-        assigned = set(roles.split(','))
-        if not assigned or not assigned <= {'planner', 'operator', 'inspector', 'admin', 'viewer'}:
-            raise click.ClickException('Unknown role.')
-        if len(password) < 12:
-            raise click.ClickException('Use at least 12 characters.')
-        try:
-            with sqlite3.connect(app.config['DATABASE']) as connection:
-                connection.execute('INSERT INTO users(username,password_hash,roles) VALUES(?,?,?)',
-                                   (username, generate_password_hash(password), ','.join(sorted(assigned))))
-        except sqlite3.IntegrityError:
-            raise click.ClickException('Username already exists.') from None
-        click.echo(f'Created {username}.')
+    from .tenancy import register_commands
+    register_commands(app)
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         error = None
         if request.method == 'POST':
             user = db().execute('SELECT * FROM users WHERE username=?', (request.form.get('username', ''),)).fetchone()
-            if user and check_password_hash(user['password_hash'], request.form.get('password', '')):
+            membership = db().execute(
+                'SELECT m.tenant_id FROM memberships m JOIN tenants t ON t.id=m.tenant_id '
+                'WHERE m.user_id=? AND t.slug=? AND m.roles != ?',
+                (user['id'], request.form.get('tenant', '').strip(), '')).fetchone() if user else None
+            if user and membership and check_password_hash(user['password_hash'], request.form.get('password', '')):
                 session.clear()
-                session.update(user_id=user['id'], csrf=secrets.token_hex(32))
+                session.update(user_id=user['id'], tenant_id=membership['tenant_id'], csrf=secrets.token_hex(32))
                 session.permanent = True
                 return redirect(url_for('index'))
-            error = 'Username or password is incorrect.'
+            error = 'Organization, username or password is incorrect.'
         return render_template('login.html', error=error)
 
     @app.post('/logout')
@@ -152,7 +136,7 @@ def create_app(config=None):
     @app.get('/')
     @roles_required()
     def index():
-        tickets = db().execute('SELECT * FROM tickets ORDER BY created_at DESC').fetchall()
+        tickets = db().execute('SELECT * FROM tickets WHERE tenant_id=? ORDER BY created_at DESC', (g.tenant['id'],)).fetchall()
         return render_template('index.html', tickets=tickets)
 
     @app.get('/scan')
@@ -193,14 +177,14 @@ def create_app(config=None):
             abort(400, 'Provide work instructions and 1–20 routing steps, at most 500 characters per step.')
         ticket_id = 'JR-' + secrets.token_hex(6).upper()
         with db():
-            db().execute('INSERT INTO tickets VALUES(?,?,?,?,?,?,?,?,?,?,1)',
-                         (ticket_id, pn, revision, quantity, tracking, json.dumps(serials), instructions, 'ready', g.user['id'], now()))
+            db().execute('INSERT INTO tickets(id,tenant_id,pn,revision,quantity,tracking,serials,instructions,state,created_by,created_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)',
+                         (ticket_id, g.tenant['id'], pn, revision, quantity, tracking, json.dumps(serials), instructions, 'ready', g.user['id'], now()))
             for sequence, line in enumerate(route, 1):
                 name, _, detail = line.partition('|')
                 if not name.strip():
                     abort(400, 'Each operation needs a name.')
-                db().execute('INSERT INTO operations(ticket_id,sequence,name,instructions) VALUES(?,?,?,?)',
-                             (ticket_id, sequence, name.strip(), detail.strip() or instructions))
+                db().execute('INSERT INTO operations(tenant_id,ticket_id,sequence,name,instructions) VALUES(?,?,?,?,?)',
+                             (g.tenant['id'], ticket_id, sequence, name.strip(), detail.strip() or instructions))
             event(ticket_id, 'ticket_created', f'{pn} rev {revision}; quantity {quantity}; {tracking}')
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -208,8 +192,8 @@ def create_app(config=None):
     @roles_required()
     def ticket_detail(ticket_id):
         ticket = ticket_or_404(ticket_id)
-        operations = db().execute('SELECT o.*, u.username FROM operations o LEFT JOIN users u ON u.id=o.completed_by WHERE ticket_id=? ORDER BY sequence', (ticket_id,)).fetchall()
-        events = db().execute('SELECT e.*, u.username FROM events e JOIN users u ON u.id=e.actor_id WHERE ticket_id=? ORDER BY e.id', (ticket_id,)).fetchall()
+        operations = db().execute('SELECT o.*, u.username FROM operations o LEFT JOIN users u ON u.id=o.completed_by WHERE ticket_id=? AND tenant_id=? ORDER BY sequence', (ticket_id, g.tenant['id'])).fetchall()
+        events = db().execute('SELECT e.*, u.username FROM events e JOIN users u ON u.id=e.actor_id WHERE ticket_id=? AND e.tenant_id=? ORDER BY e.id', (ticket_id, g.tenant['id'])).fetchall()
         next_operation = next((o for o in operations if o['completed_by'] is None), None)
         independent = all(o['completed_by'] != g.user['id'] for o in operations)
         return render_template('ticket.html', ticket=ticket, operations=operations, events=events,
@@ -222,15 +206,15 @@ def create_app(config=None):
             ticket = lock_ticket(ticket_id)
             if ticket['state'] not in {'ready', 'in_progress'}:
                 abort(409, 'This ticket is not available for production.')
-            operation = db().execute('SELECT * FROM operations WHERE ticket_id=? AND completed_by IS NULL ORDER BY sequence LIMIT 1', (ticket_id,)).fetchone()
+            operation = db().execute('SELECT * FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by IS NULL ORDER BY sequence LIMIT 1', (ticket_id, g.tenant['id'])).fetchone()
             if not operation or request.form.get('operation_id') != str(operation['id']):
                 abort(409, 'Only the next routing operation can be completed.')
             if request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm that the entire batch completed this operation.')
-            db().execute('UPDATE operations SET completed_by=?, completed_at=? WHERE id=?', (g.user['id'], now(), operation['id']))
-            remaining = db().execute('SELECT COUNT(*) FROM operations WHERE ticket_id=? AND completed_by IS NULL', (ticket_id,)).fetchone()[0]
+            db().execute('UPDATE operations SET completed_by=?, completed_at=? WHERE id=? AND tenant_id=?', (g.user['id'], now(), operation['id'], g.tenant['id']))
+            remaining = db().execute('SELECT COUNT(*) FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by IS NULL', (ticket_id, g.tenant['id'])).fetchone()[0]
             state = 'in_progress' if remaining else 'awaiting_inspection'
-            db().execute('UPDATE tickets SET state=?,version=version+1 WHERE id=?', (state, ticket_id))
+            db().execute('UPDATE tickets SET state=?,version=version+1 WHERE id=? AND tenant_id=?', (state, ticket_id, g.tenant['id']))
             event(ticket_id, 'operation_completed', f"{operation['sequence']}: {operation['name']}")
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -241,14 +225,14 @@ def create_app(config=None):
             ticket = lock_ticket(ticket_id)
             if ticket['state'] != 'awaiting_inspection':
                 abort(409, 'Complete all production operations before inspection.')
-            if db().execute('SELECT 1 FROM operations WHERE ticket_id=? AND completed_by=?', (ticket_id, g.user['id'])).fetchone():
+            if db().execute('SELECT 1 FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by=?', (ticket_id, g.tenant['id'], g.user['id'])).fetchone():
                 abort(403, 'Independent inspection requires someone who performed none of this ticket’s production operations.')
             result, notes = request.form.get('result'), request.form.get('notes', '').strip()
             if result not in {'pass', 'fail'} or not notes or len(notes) > 4000:
                 abort(400, 'Choose pass or fail and record inspection evidence (up to 4000 characters).')
-            db().execute('INSERT INTO inspections(ticket_id,inspector_id,result,notes,created_at) VALUES(?,?,?,?,?)',
-                         (ticket_id, g.user['id'], result, notes, now()))
-            db().execute('UPDATE tickets SET state=?,version=version+1 WHERE id=?', ('accepted' if result == 'pass' else 'held', ticket_id))
+            db().execute('INSERT INTO inspections(tenant_id,ticket_id,inspector_id,result,notes,created_at) VALUES(?,?,?,?,?,?)',
+                         (g.tenant['id'], ticket_id, g.user['id'], result, notes, now()))
+            db().execute('UPDATE tickets SET state=?,version=version+1 WHERE id=? AND tenant_id=?', ('accepted' if result == 'pass' else 'held', ticket_id, g.tenant['id']))
             event(ticket_id, 'inspection_' + result, notes)
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -264,7 +248,7 @@ def create_app(config=None):
     @roles_required()
     def traveler(ticket_id):
         ticket = ticket_or_404(ticket_id)
-        operations = db().execute('SELECT * FROM operations WHERE ticket_id=? ORDER BY sequence', (ticket_id,)).fetchall()
+        operations = db().execute('SELECT * FROM operations WHERE ticket_id=? AND tenant_id=? ORDER BY sequence', (ticket_id, g.tenant['id'])).fetchall()
         return render_template('traveler.html', ticket=ticket, operations=operations, serials=json.loads(ticket['serials']))
 
     @app.get('/tickets/<ticket_id>/barcode.svg')

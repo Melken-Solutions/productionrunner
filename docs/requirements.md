@@ -16,6 +16,8 @@ These are evidence, not a substitute for the missing versioned specification.
 
 | Requirement | Slice implementation | Verification / gap |
 |---|---|---|
+| Multi-tenancy | Tenant memberships, scoped roles and tenant-owned workflow records | Two-tenant read/write denial tests, revocation, composite ownership constraints, explicit legacy migration |
+| PIN roles | Tenant-scoped role checks; current credentials remain passwords | **Partial:** PIN enrollment, verification, throttling and reset pending |
 | One-PN ticket | Single validated scalar PN, revision, positive integer quantity; immutable after creation | Reject blank/list PN, invalid quantity; no ticket-edit endpoint |
 | Traveler stays with material | Printable route/instructions, PN/revision/quantity, stable JobRunner ID and Code 128 | SVG and print-page tests; physical scan/print qualification outstanding |
 | Downstream instructions | Scan resolves authenticated live ticket with ordered route and next operation | Full workflow and route-order tests |
