@@ -7,4 +7,4 @@
 <label>Upload drawing PDF (maximum 10 MB)<input type="file" name="drawing" accept=".pdf,application/pdf"></label>
 <p>Or supply a link instead of an upload:</p><label>HTTPS drawing link<input type="url" name="drawing_url" maxlength="2048" placeholder="https://…"></label>
 <p>Use a revision-specific link. External content can change and may require access to your document system. Network-drive paths are not browser-accessible links; upload the PDF instead.</p>
-<button>Save part revision</button></form>{% endblock %}
+<label>Optional laser DXF (maximum 20 MB)<input type="file" name="dxf" accept=".dxf"></label><p>Upload the DXF for this exact PN and revision. Operators can download the original file from their job.</p><button>Save part revision</button></form>{% endblock %}

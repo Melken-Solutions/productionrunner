@@ -10,6 +10,7 @@ from flask import abort, g, redirect, render_template, request, send_file, url_f
 from werkzeug.utils import secure_filename
 
 MAX_PDF = 10 * 1024 * 1024
+MAX_DXF = 20 * 1024 * 1024
 FIELDS = 'id,tenant_id,pn,revision,description,drawing_url,sha256,created_by,created_at'
 
 
@@ -33,7 +34,57 @@ def ticket_drawing(conn, tenant_id, ticket_id):
 def register_parts(app, db, roles_required, now, lock_ticket, event):
     @app.context_processor
     def drawing_context():
-        return {'drawing_for': lambda ticket: ticket_drawing(db(), g.tenant['id'], ticket['id'])}
+        return {'drawing_for': lambda ticket: ticket_drawing(db(), g.tenant['id'], ticket['id']),
+                'dxf_for': lambda part_id: db().execute('SELECT sha256 FROM part_dxf WHERE tenant_id=? AND part_revision_id=?', (g.tenant['id'], part_id)).fetchone()}
+
+    def read_dxf(required=False):
+        upload = request.files.get('dxf')
+        if not upload or not upload.filename:
+            if required:
+                abort(400, 'Choose a DXF file.')
+            return None
+        if not upload.filename.lower().endswith('.dxf'):
+            abort(400, 'Choose a file with the .dxf extension.')
+        data = upload.stream.read(MAX_DXF + 1)
+        if len(data) > MAX_DXF:
+            abort(413, 'DXF must be 20 MB or smaller.')
+        if not data:
+            abort(400, 'DXF file must not be empty.')
+        return data
+
+    def save_dxf(part_id, data):
+        db().execute('INSERT INTO part_dxf VALUES(?,?,?,?,?,?)',
+                     (g.tenant['id'], part_id, data, hashlib.sha256(data).hexdigest(), g.user['id'], now()))
+        db().execute('INSERT INTO part_events(tenant_id,part_revision_id,actor_id,action,created_at) VALUES(?,?,?,?,?)',
+                     (g.tenant['id'], part_id, g.user['id'], 'dxf_uploaded', now()))
+
+    @app.post('/parts/<part_id>/dxf/upload')
+    @roles_required('planner', 'admin')
+    def upload_dxf(part_id):
+        find_part(db(), g.tenant['id'], part_id)
+        data = read_dxf(required=True)
+        try:
+            with db():
+                save_dxf(part_id, data)
+        except sqlite3.IntegrityError:
+            abort(409, 'This revision already has a DXF. Add a new part revision to change it.')
+        return redirect(url_for('part_detail', part_id=part_id))
+
+    @app.post('/parts/<part_id>/dxf/download')
+    @roles_required()
+    def download_dxf(part_id):
+        part = find_part(db(), g.tenant['id'], part_id)
+        record = db().execute('SELECT content FROM part_dxf WHERE tenant_id=? AND part_revision_id=?',
+                              (g.tenant['id'], part_id)).fetchone()
+        if not record:
+            abort(404, 'No DXF attached to this revision.')
+        with db():
+            db().execute('INSERT INTO part_events(tenant_id,part_revision_id,actor_id,action,created_at) VALUES(?,?,?,?,?)',
+                         (g.tenant['id'], part_id, g.user['id'], 'dxf_download_requested', now()))
+        response = send_file(BytesIO(record['content']), mimetype='application/octet-stream', as_attachment=True,
+                             download_name=secure_filename(f"{part['pn']}-rev-{part['revision']}.dxf"))
+        response.headers['Content-Security-Policy'] = "sandbox; default-src 'none'"
+        return response
 
     @app.get('/parts')
     @roles_required()
@@ -73,6 +124,7 @@ def register_parts(app, db, roles_required, now, lock_ticket, event):
                 valid = False
             if not valid or len(link) > 2048 or any(ord(ch) < 33 for ch in link) or '\\' in link:
                 abort(400, 'Use an HTTPS link without embedded credentials or whitespace.')
+        dxf_data = read_dxf()
         part_id = 'PART-' + secrets.token_hex(12)
         try:
             with db():
@@ -80,6 +132,8 @@ def register_parts(app, db, roles_required, now, lock_ticket, event):
                              (part_id, g.tenant['id'], pn, revision, description, data, link or None, digest, g.user['id'], now()))
                 db().execute('INSERT INTO part_events(tenant_id,part_revision_id,actor_id,action,created_at) VALUES(?,?,?,?,?)',
                              (g.tenant['id'], part_id, g.user['id'], 'part_revision_added', now()))
+                if dxf_data is not None:
+                    save_dxf(part_id, dxf_data)
         except sqlite3.IntegrityError:
             abort(409, 'That PN/revision already exists. Add a new revision to change its drawing.')
         return redirect(url_for('part_detail', part_id=part_id))

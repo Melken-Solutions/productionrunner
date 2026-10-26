@@ -52,13 +52,15 @@ def create_app(config=None):
                       DATABASE=str(Path(app.instance_path) / 'productionrunner.sqlite3'),
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
                       SESSION_COOKIE_SECURE=os.environ.get('PR_HTTPS') == '1',
-                      PERMANENT_SESSION_LIFETIME=timedelta(hours=8), MAX_CONTENT_LENGTH=11 * 1024 * 1024)
+                      PERMANENT_SESSION_LIFETIME=timedelta(hours=8), MAX_CONTENT_LENGTH=31 * 1024 * 1024)
     if config:
         app.config.update(config)
 
     @app.before_request
     def prepare():
-        if request.endpoint != 'new_part':
+        if request.endpoint == 'upload_dxf':
+            request.max_content_length = 21 * 1024 * 1024
+        elif request.endpoint != 'new_part':
             request.max_content_length = 64 * 1024
         g.app_db = app.config['DATABASE']
         g.user = db().execute('SELECT * FROM users WHERE id=?', (session.get('user_id'),)).fetchone()

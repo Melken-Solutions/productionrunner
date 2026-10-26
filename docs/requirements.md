@@ -50,3 +50,8 @@ HOT jobs appear before normal jobs. Multiple HOT jobs use planner/admin-assigned
 ## Part-number selection and matched drawings — requested during local testing
 
 Support PDF uploads and external HTTPS links, a tenant-specific PN/revision list and search, automatic drawing association on ticket creation, and explicit exact-revision attachment to existing unmapped tickets. Drawings are accessible from both batch and unit pages. Uploaded bytes and revision associations are immutable; an external URL can still serve changed content and is visibly identified as external. Manual entry without a library drawing remains available for compatibility. Formal document release approval is not inferred.
+
+
+## Operator DXF download — requested during local testing
+
+Allow a planner/admin to attach one DXF to a part revision during creation or later if no DXF exists. Operators download that exact revision’s original file from the ticket/unit or part page for manual loading into laser software. Tenant boundaries, audit records, immutable revision files and existing drawing associations are preserved. This adds file transfer only, with a 20 MB size cap; it does not validate laser suitability or automate machine operation.
