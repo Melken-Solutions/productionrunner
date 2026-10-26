@@ -11,7 +11,7 @@ This is a functional equipment list for evaluating the slice, not an approved pu
 | Production terminal | One per concurrently active station in a later pilot | Browser, reliable network, individual login; readable instructions and scanner input |
 | Barcode scanner | One per scanning station | USB HID/keyboard-wedge mode, Code 128 support, configurable Enter suffix; target OS/browser compatibility |
 | Traveler printer | One per print point | Legible text plus crisp Code 128 at 100% size; current MVP prints a full page through browser |
-| Traveler media and holder | One per active material batch, plus replacements | Paper and durable clear sleeve/attachment compatible with the material container and environment |
+| Traveler media and holder | One per active batch or independent serial unit, plus replacements | Paper and durable clear sleeve/attachment compatible with the material container and environment |
 | Independent inspection station | One per concurrent inspector; may share a terminal sequentially | Separate individual inspector account; access to acceptance criteria and the material |
 | Inspection tools | Per product/control plan | Calibrated tools required by the approved drawing/inspection process; not selected by this software |
 | Network and protected power | Per networked pilot layout | Reliable connectivity, managed access, recoverable host power and backup storage |
@@ -20,7 +20,7 @@ The local demo can use one computer, one printer and one scanner, with users sig
 
 ## Traveler and material handling
 
-- A traveler belongs to one ticket and whole batch. Attach it to the carrier/tote or material bundle so it travels at every handoff.
+- A batch traveler identifies a whole batch; an independent serial traveler identifies exactly one unit. Attach the appropriate traveler to the batch carrier or individual unit so it travels at every handoff. Serial ticket cover sheets do not replace unit travelers.
 - Print PN, revision, quantity, stable JobRunner ID, barcode, route and instructions. The barcode contains the ID only; no credentials or production instructions are encoded.
 - Scan at each receiving station and review the live next operation. Printed status cannot authorize release.
 - Do not split a batch under one traveler in this slice. Controlled parent/child travelers and quantity reconciliation must be designed before split lots.
@@ -37,4 +37,6 @@ The local demo can use one computer, one printer and one scanner, with users sig
 6. Verify sign-out/sign-in at shared stations, unauthorized-action denials, independent inspection denial for a production contributor and fail/hold behavior.
 7. Document device models/configuration, printer media, observed scan results and operator sign-off before a pilot.
 
-SVG generation is software-tested; physical barcode decoding and environmental durability are **not yet validated**. Individual-unit labels, mobile camera scanning, offline stations and direct industrial printer integration remain later design work.
+SVG generation is software-tested; physical barcode decoding and environmental durability are **not yet validated**. Compact industrial unit labels (the current unit traveler is a full printable page), mobile camera scanning, offline stations and direct industrial printer integration remain later design work.
+
+For serial qualification, scan two different unit travelers and confirm distinct serial identities, quantity one, independent live progress, stable reprints and correct parent ticket links. Verify a held unit is physically segregated while its siblings retain their own travelers.

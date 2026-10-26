@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">TICKET / {{ ticket.id }}</p>
+<h1>{{ ticket.pn }} · Rev {{ ticket.revision }}</h1>
+<p>{{ ticket.quantity }} independent units · Summary: <strong>{{ ticket.state|replace('_',' ') }}</strong></p>
+<p>Each unit follows the route and receives its own inspection. A held unit must be segregated; other units can continue. The ticket is accepted only when every unit passes.</p>
+<section class="card"><h2>Serial travelers and progress</h2>
+<p>{{ units|map(attribute='serial')|join(', ') }}</p>
+<div class="table-wrap"><table><thead><tr><th>Serial</th><th>Traveler</th><th>Status</th><th>Recorded steps</th></tr></thead><tbody>
+{% for unit in units %}<tr><td>{{ unit.serial }}</td><td><a href="{{ url_for('unit_detail', unit_id=unit.id) }}">{{ unit.id }}</a></td><td>{{ unit.state|replace('_',' ') }}</td><td>{{ unit.completed_count }} / {{ operations|length }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% if 'planner' in g.roles or 'operator' in g.roles %}<form method="post" action="{{ url_for('issue_traveler', ticket_id=ticket.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="secondary">Prepare ticket cover sheet</button></form>{% endif %}
+</section>
+<section class="card"><h2>Work instructions</h2><p class="preserve">{{ ticket.instructions }}</p><h2>Shared route definition</h2><ol>{% for o in operations %}<li><strong>{{ o.name }}</strong> — {{ o.instructions }}</li>{% endfor %}</ol></section>
+<section class="card"><h2>Audit history — all units</h2><ol>{% for e in events %}<li><strong>{{ e.action|replace('_',' ') }}</strong> · {{ e.username }}<p class="preserve">{{ e.detail }}</p><small>{{ e.created_at }}</small></li>{% endfor %}</ol></section>
+{% endblock %}

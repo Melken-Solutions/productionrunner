@@ -4,7 +4,7 @@
 
 ProductionRunner manages a ticket for one part number and revision. A JobRunner is the physical identity and instruction traveler for that ticket's material. The traveler remains with the material; the live ticket is authoritative for status. Printing does not advance production or authorize release.
 
-A planner establishes quantity, instructions, acceptance criteria and an ordered route. Operators record full-batch operation completion. An independent inspector records evidence and pass/fail. Pass accepts the batch; fail holds it. No endpoint bypasses these transitions.
+A planner establishes quantity, instructions, acceptance criteria and an ordered route. Operators record full-batch operation completion in batch mode; new serial tickets record completion for each unit. An independent inspector records evidence and pass/fail. Pass accepts the batch or unit; fail holds the batch or unit. No endpoint bypasses these transitions.
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,7 @@ For a future station network: browser clients on the shop-floor network reach a 
 | Inspection | One final outcome per ticket, inspector, result, evidence/time |
 | Event | Ordered audit entry, ticket, actor, action, detail, UTC time |
 
-Serials are inventory identifiers in a JSON list in this slice. They do not have separate routes or production events. A production model supporting individual serialized movement should normalize units and their histories once the specification establishes uniqueness and genealogy rules.
+New serial tickets normalize units, per-unit completions and per-unit inspections. The ticket’s JSON serial list is retained as its creation inventory; the application does not edit identities or route definitions after creation. Earlier tickets without unit records keep their original whole-batch semantics. Cross-ticket uniqueness and genealogy remain unresolved.
 
 ## State and consistency
 
@@ -85,7 +85,7 @@ Tickets, operations, inspections and events carry tenant IDs. Queue, ticket, sca
 
 `migrate-tenancy` is an offline, explicit migration for the original MVP only. It makes a private, non-overwriting SQLite backup, rebuilds tables in one exclusive transaction, preserves legacy IDs/data, and checks foreign keys before commit. All old records go to the one explicitly named organization. It does not infer ownership or split previously mixed-company data. Stop writers before backup/migration and retain the prior application version for backup restoration.
 
-Application tenant isolation does not restrict a trusted database/file administrator. Existing production authentication/hosting limitations still apply. User-provisioning and role-change audit events, and independent serial execution remain pending.
+Application tenant isolation does not restrict a trusted database/file administrator. Existing production authentication/hosting limitations still apply. User-provisioning and role-change audit events remain pending.
 
 ## PIN credentials and authentication audit
 
@@ -94,3 +94,13 @@ Application tenant isolation does not restrict a trusted database/file administr
 `set-pin` is trusted local-host administration with hidden, confirmed input and a required reason. It does not grant any role. CLI audit attribution is the local OS account, not an asserted web administrator. Security history is tenant-admin-only and shows the latest 200 entries. Successful and failed sign-ins for active memberships are recorded without submitted credentials; unknown/revoked identities are covered by throttling but do not create membership audit rows. Throttled attempts do not create repeated audit rows.
 
 Persistent fixed windows limit failed account and source-address attempts across both credential methods, including after process restart. SQLite `BEGIN IMMEDIATE` serializes counter updates, credential verification and audit writes. This favors simple correctness for local evaluation; password hashing while holding the SQLite writer lock limits concurrency and must be revisited for production scale. Unknown identities use a dummy hash verification. Proxy headers are ignored. Shared-proxy throttling, offline attacks against short PIN hashes, shared-station session policy, recovery UX, comprehensive security monitoring and deployment hardening still require production review. PINs are not electronic-signature or regulatory compliance claims.
+
+## Independent serial execution
+
+New serial tickets create one `serial_units` row and stable `JR-U-` traveler ID per serial in the same transaction as ticket/route creation. A shared immutable route definition lives in `operations`; `unit_completions` records each unit/operation once. Composite foreign keys ensure units, route operations, inspections and audit links belong to the same tenant and ticket. `unit_inspections` allows one final result per unit. Inspector independence is evaluated against contributors to that unit, including dual-role users. Work on another unit is allowed under this provisional policy.
+
+Each unit has its own workflow state and optimistic version. `BEGIN IMMEDIATE` plus the submitted unit version prevents duplicate/stale writes while allowing two units to advance without conflicting on the parent version. Ticket-wide completion/inspection endpoints reject tickets with unit records. Unit events are written into the existing immutable ticket event stream and associated through immutable `unit_event_links`, so both ticket and unit history remain available. Workflow writes, summary updates and audit links commit or roll back together.
+
+Ticket state is a summary: any held unit → held; all accepted → accepted; all ready → ready; only awaiting-inspection/accepted units → awaiting_inspection; otherwise → in_progress. A held summary does not block work on other units. A held/accepted unit itself has no outgoing actions. Ticket pages show completed step counts per unit; scans resolve either the ticket overview or an individual unit. Parent printing produces a cover sheet; unit printing produces a quantity-one traveler. Neither paper nor ticket summary authorizes shipment.
+
+`init-db` adds the serial tables/indexes without rewriting old tickets. Existing serial inventory continues whole-batch execution, including its original independence rule. No silent historical backfill or conversion is performed. This slice does not implement unit-specific route definitions, serial reassignment, split/merge, genealogy, rework, hold release, or global serial uniqueness. Physical unit traveler qualification remains outstanding.

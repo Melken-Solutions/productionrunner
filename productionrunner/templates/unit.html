@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block content %}
+<a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">← All units on ticket {{ ticket.id }}</a>
+<p class="eyebrow">UNIT / {{ unit.id }}</p><h1>Serial {{ unit.serial }}</h1>
+<p>{{ ticket.pn }} · Rev {{ ticket.revision }} · Quantity 1 · <strong>{{ unit.state|replace('_',' ') }}</strong></p>
+<section class="card"><h2>Work instructions</h2><p class="preserve">{{ ticket.instructions }}</p>
+{% if 'planner' in g.roles or 'operator' in g.roles %}<form method="post" action="{{ url_for('issue_unit_traveler', unit_id=unit.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button class="secondary">Prepare unit print / reprint</button></form>{% endif %}</section>
+<section class="card"><h2>This unit’s route</h2><ol>{% for o in operations %}<li><strong>{{ o.name }}</strong><p>{{ o.instructions }}</p>{% if o.completed_by_unit %}<small>Completed by {{ o.username }} · {{ o.unit_completed_at }}</small>{% elif next_operation and o.id == next_operation.id %}<strong>Next operation</strong>{% else %}<small>Waiting for preceding operation</small>{% endif %}</li>{% endfor %}</ol>
+{% if next_operation and 'operator' in g.roles and unit.state in ['ready','in_progress'] %}
+<form class="stack" method="post" action="{{ url_for('complete_unit', unit_id=unit.id) }}">
+<input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ unit.version }}"><input type="hidden" name="operation_id" value="{{ next_operation.id }}">
+<label class="check"><input type="checkbox" name="confirm" value="yes" required>Serial {{ unit.serial }} completed {{ next_operation.name }}.</label><button>Record this unit’s completion</button></form>{% endif %}</section>
+<section class="card"><h2>Independent unit inspection</h2>
+{% if unit.state == 'awaiting_inspection' and 'inspector' in g.roles and independent %}
+<form class="stack" method="post" action="{{ url_for('inspect_unit', unit_id=unit.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ unit.version }}">
+<label>Result<select name="result" required><option value="">Choose</option><option value="pass">Pass — accept this unit</option><option value="fail">Fail — hold this unit</option></select></label>
+<label>Inspection evidence<textarea name="notes" required maxlength="4000"></textarea></label><button>Record unit inspection</button></form>
+{% elif unit.state == 'accepted' %}<p>This unit is accepted. See evidence below.</p>
+{% elif unit.state == 'held' %}<p class="alert">This unit is held. Segregate it. Rework and hold release are not available.</p>
+{% elif not independent and 'inspector' in g.roles %}<p>You performed production on this unit. Another inspector must inspect it.</p>
+{% else %}<p>Complete this unit’s route, then an independent inspector records its result.</p>{% endif %}</section>
+<section class="card"><h2>This unit’s audit history</h2><ol>{% for e in events %}<li><strong>{{ e.action|replace('_',' ') }}</strong> · {{ e.username }}<p class="preserve">{{ e.detail }}</p><small>{{ e.created_at }}</small></li>{% else %}<li>No actions recorded yet.</li>{% endfor %}</ol></section>
+{% endblock %}

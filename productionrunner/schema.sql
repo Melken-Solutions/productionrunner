@@ -61,3 +61,35 @@ CREATE TABLE IF NOT EXISTS auth_events (
 CREATE INDEX IF NOT EXISTS auth_events_tenant ON auth_events(tenant_id,id);
 CREATE TRIGGER IF NOT EXISTS auth_events_no_update BEFORE UPDATE ON auth_events BEGIN SELECT RAISE(ABORT, 'Authentication events are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS auth_events_no_delete BEFORE DELETE ON auth_events BEGIN SELECT RAISE(ABORT, 'Authentication events are immutable'); END;
+CREATE UNIQUE INDEX IF NOT EXISTS operations_owner_id ON operations(tenant_id,ticket_id,id);
+CREATE UNIQUE INDEX IF NOT EXISTS events_owner_id ON events(tenant_id,ticket_id,id);
+CREATE TABLE IF NOT EXISTS serial_units (
+ id TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, serial TEXT NOT NULL,
+ state TEXT NOT NULL DEFAULT 'ready' CHECK(state IN ('ready','in_progress','awaiting_inspection','accepted','held')),
+ version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,ticket_id,id), UNIQUE(ticket_id,serial),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS unit_completions (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, unit_id TEXT NOT NULL, operation_id INTEGER NOT NULL,
+ actor_id INTEGER NOT NULL, completed_at TEXT NOT NULL,
+ PRIMARY KEY(unit_id,operation_id),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,operation_id) REFERENCES operations(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS unit_inspections (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, unit_id TEXT PRIMARY KEY,
+ inspector_id INTEGER NOT NULL, result TEXT NOT NULL CHECK(result IN ('pass','fail')),
+ notes TEXT NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,inspector_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS unit_event_links (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, unit_id TEXT NOT NULL, event_id INTEGER PRIMARY KEY,
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,event_id) REFERENCES events(tenant_id,ticket_id,id)
+);
+CREATE INDEX IF NOT EXISTS unit_events_unit ON unit_event_links(tenant_id,unit_id,event_id);
+CREATE TRIGGER IF NOT EXISTS unit_links_no_update BEFORE UPDATE ON unit_event_links BEGIN SELECT RAISE(ABORT, 'Unit audit links are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS unit_links_no_delete BEFORE DELETE ON unit_event_links BEGIN SELECT RAISE(ABORT, 'Unit audit links are immutable'); END;

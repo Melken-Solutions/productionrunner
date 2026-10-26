@@ -67,7 +67,18 @@ Both sign-in methods share a persistent five-failure limit per organization/user
 4. Sign in as `inspector`. Record a pass with evidence to accept the batch, or a failure to hold it. A user who completed any production step cannot inspect that ticket, even if assigned both roles.
 5. Inspect the audit history. Refresh or restart the server: records persist.
 
-Batch tracking is the default. Serial mode requires one unique serial per unit **within the ticket**, but all units still move together. Split lots, individual serial routes, rework and hold release are not implemented.
+Batch tracking remains the default. New serial tickets now create independent unit travelers and progress records. Serials must be unique **within the ticket**; no cross-ticket serial registry is enforced. Split/merge, different route definitions per unit, rework and hold release are not implemented.
+
+## Try independent serial travelers
+
+1. Create a new ticket with **Independent serial units**, quantity 2, serials `S1` and `S2`, and an ordered route.
+2. Open each unit from the ticket’s progress table. Choose **Prepare unit print / reprint**, print and scan-test its `JR-U-…` barcode, and attach it to that individual unit. The parent `JR-…` barcode opens the ticket overview; its printed page is a cover sheet, not a unit traveler.
+3. Scan a unit barcode as an operator and complete its route one step at a time. Every unit has its own version and progress; advancing S1 does not advance S2. Reprints retain the same unit ID.
+4. Inspect each finished unit separately. Anyone who performed production on that unit is disqualified from inspecting it; production on a different unit does not disqualify the inspector. These independence rules are provisional pending specification review.
+5. Pass accepts that unit; fail holds only that unit. Segregate held material. Other units may continue, but the ticket summary remains held if any unit is held and becomes accepted only when all units pass. The ticket summary is not a shipping authorization.
+
+For an existing database, stop the app, make a SQLite backup and run `python -m flask --app productionrunner init-db` before restarting to add the serial tables. For the original pre-tenancy schema, use `migrate-tenancy` first. **Existing serial-inventory tickets retain whole-batch execution and are marked Legacy serial inventory.** No historical operation or inspection is expanded into inferred unit records. There is no automatic conversion of in-progress or completed tickets.
+
 
 ## Verify
 
@@ -76,7 +87,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Tests cover PIN workflow/inspection, reset/disable, hashing, concurrent and persistent throttling, security-history access, additive upgrades, two-organization isolation, scoped roles, membership revocation, migration/backup/rollback, the end-to-end workflow, permissions, self-inspection denial, route order, fail/hold behavior, stale and concurrent submissions, validation rollback, CSRF, output escaping, persistence, barcode output, and audit immutability. GitHub Actions runs the suite on Python 3.12 and 3.14.
+Tests cover independent unit routing/inspection, parallel progress, held siblings, unit travelers, cross-tenant denials, stale/duplicate submissions, unit audit atomicity, legacy serial compatibility, PIN workflow/inspection, reset/disable, hashing, concurrent and persistent throttling, security-history access, additive upgrades, two-organization isolation, scoped roles, membership revocation, migration/backup/rollback, the end-to-end workflow, permissions, self-inspection denial, route order, fail/hold behavior, stale and concurrent submissions, validation rollback, CSRF, output escaping, persistence, barcode output, and audit immutability. GitHub Actions runs the suite on Python 3.12 and 3.14.
 
 ## Documentation
 

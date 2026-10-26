@@ -114,6 +114,8 @@ def create_app(config=None):
     register_commands(app)
     from .pin_auth import authenticate, register_pin_auth
     register_pin_auth(app, db, roles_required)
+    from .serials import create_units, units_for, register_serials
+    register_serials(app, db, roles_required, now)
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -149,6 +151,11 @@ def create_app(config=None):
     @roles_required()
     def scan():
         code = request.args.get('code', '').strip()
+        if code.startswith('JR-U-'):
+            unit = db().execute('SELECT id FROM serial_units WHERE tenant_id=? AND id=?', (g.tenant['id'], code)).fetchone()
+            if not unit:
+                abort(404, 'Unknown unit traveler.')
+            return redirect(url_for('unit_detail', unit_id=code))
         ticket_or_404(code)
         return redirect(url_for('ticket_detail', ticket_id=code))
 
@@ -191,6 +198,8 @@ def create_app(config=None):
                     abort(400, 'Each operation needs a name.')
                 db().execute('INSERT INTO operations(tenant_id,ticket_id,sequence,name,instructions) VALUES(?,?,?,?,?)',
                              (g.tenant['id'], ticket_id, sequence, name.strip(), detail.strip() or instructions))
+            if tracking == 'serial':
+                create_units(db(), g.tenant['id'], ticket_id, serials)
             event(ticket_id, 'ticket_created', f'{pn} rev {revision}; quantity {quantity}; {tracking}')
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -202,6 +211,9 @@ def create_app(config=None):
         events = db().execute('SELECT e.*, u.username FROM events e JOIN users u ON u.id=e.actor_id WHERE ticket_id=? AND e.tenant_id=? ORDER BY e.id', (ticket_id, g.tenant['id'])).fetchall()
         next_operation = next((o for o in operations if o['completed_by'] is None), None)
         independent = all(o['completed_by'] != g.user['id'] for o in operations)
+        units = units_for(db(), g.tenant['id'], ticket_id)
+        if units:
+            return render_template('serial_ticket.html', ticket=ticket, units=units, operations=operations, events=events)
         return render_template('ticket.html', ticket=ticket, operations=operations, events=events,
                                next_operation=next_operation, independent=independent, serials=json.loads(ticket['serials']))
 
@@ -210,6 +222,8 @@ def create_app(config=None):
     def complete(ticket_id):
         with db():
             ticket = lock_ticket(ticket_id)
+            if units_for(db(), g.tenant['id'], ticket_id):
+                abort(409, 'Use the individual unit traveler for production and inspection.')
             if ticket['state'] not in {'ready', 'in_progress'}:
                 abort(409, 'This ticket is not available for production.')
             operation = db().execute('SELECT * FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by IS NULL ORDER BY sequence LIMIT 1', (ticket_id, g.tenant['id'])).fetchone()
@@ -229,6 +243,8 @@ def create_app(config=None):
     def inspect(ticket_id):
         with db():
             ticket = lock_ticket(ticket_id)
+            if units_for(db(), g.tenant['id'], ticket_id):
+                abort(409, 'Use the individual unit traveler for production and inspection.')
             if ticket['state'] != 'awaiting_inspection':
                 abort(409, 'Complete all production operations before inspection.')
             if db().execute('SELECT 1 FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by=?', (ticket_id, g.tenant['id'], g.user['id'])).fetchone():
@@ -255,7 +271,8 @@ def create_app(config=None):
     def traveler(ticket_id):
         ticket = ticket_or_404(ticket_id)
         operations = db().execute('SELECT * FROM operations WHERE ticket_id=? AND tenant_id=? ORDER BY sequence', (ticket_id, g.tenant['id'])).fetchall()
-        return render_template('traveler.html', ticket=ticket, operations=operations, serials=json.loads(ticket['serials']))
+        return render_template('traveler.html', ticket=ticket, operations=operations, serials=json.loads(ticket['serials']),
+                               units=units_for(db(), g.tenant['id'], ticket_id))
 
     @app.get('/tickets/<ticket_id>/barcode.svg')
     @roles_required()

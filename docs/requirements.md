@@ -22,7 +22,7 @@ These are evidence, not a substitute for the missing versioned specification.
 | Traveler stays with material | Printable route/instructions, PN/revision/quantity, stable JobRunner ID and Code 128 | SVG and print-page tests; physical scan/print qualification outstanding |
 | Downstream instructions | Scan resolves authenticated live ticket with ordered route and next operation | Full workflow and route-order tests |
 | Batch default | Entire quantity completes each operation together | Sequential transitions; no partial-quantity action |
-| Optional individual serial tracking | Optional per-ticket serial inventory, exact quantity and uniqueness validation | **Partial:** independent serial events/routing, serial labels, cross-ticket serial uniqueness remain unresolved |
+| Optional individual serial tracking | New serial tickets have one traveler, ordered progress, inspection and history per unit; shared route definition | Concurrent units, individual hold, independence and scan tests; legacy tickets stay batch; cross-ticket uniqueness, genealogy and custom unit routes unresolved |
 | Role permissions | Planner creates; operator completes; inspector inspects; viewer/admin read; planner/operator request traveler | Server-side role checks and denial tests |
 | Independent inspection | Inspector may have performed none of the ticket’s production steps; all steps must be complete | Dual-role self-inspection blocked; early inspection blocked |
 | Evidence/history | Attributed UTC events; inspection notes; immutable event rows | Persistence, rollback and immutability tests |
@@ -33,9 +33,9 @@ These are evidence, not a substitute for the missing versioned specification.
 - Local Flask/SQLite monolith, not a prescribed target production stack.
 - Roles above and their exact permission mapping. `admin` does not silently grant production or inspection powers; accounts are provisioned by a trusted local CLI.
 - Planner enters the released PN/revision, work instructions, criteria and route. No approved drawing registry or master-data lookup yet.
-- Final whole-batch inspection after all operations. Whether inspection gates are required between operations remains unknown.
-- Any production contributor is disqualified from final inspection, regardless of role. Ticket creator is not automatically disqualified unless they also perform production.
-- Fail holds the entire batch with no override. Rework, concessions, scrap, split/merge, cancellation and hold release need approved rules.
+- Final whole-batch inspection for batch/legacy tickets; per-unit final inspection for new serial tickets after that unit’s operations. Whether inspection gates are required between operations remains unknown.
+- Any production contributor is disqualified from final inspection of that batch or individual unit, regardless of role. Ticket creator is not automatically disqualified unless they also perform production.
+- Fail holds the whole batch for batch/legacy tickets, or only the inspected unit for new serial tickets, with no override. Rework, concessions, scrap, split/merge, cancellation and hold release need approved rules.
 - No inferred SAP interface, scheduling, work-center assignments, inventory moves, electronic signatures, regulatory compliance, offline queue, or externally visible deployment.
 - Stable traveler ID is an opaque identifier, never an authorization credential. Scans require a signed-in account.
 
