@@ -1,4 +1,5 @@
 """Audited, organization-scoped account administration."""
+import json
 import re
 import sqlite3
 
@@ -65,6 +66,55 @@ def register_admin(app, db, roles_required):
         if request.form.get('version') != str(target['version']):
             abort(409, 'This user changed. Reload before submitting again.')
         return target
+
+    @app.get('/admin')
+    @roles_required('admin')
+    def admin_dashboard():
+        return render_template('admin_dashboard.html')
+
+    def organization():
+        return db().execute("SELECT t.id,t.slug,t.name,COALESCE(p.contact_name,'') AS contact_name, "
+                            "COALESCE(p.contact_email,'') AS contact_email,COALESCE(p.phone,'') AS phone, "
+                            "COALESCE(p.address,'') AS address,COALESCE(p.version,0) AS version "
+                            'FROM tenants t LEFT JOIN organization_profiles p ON p.tenant_id=t.id WHERE t.id=?',
+                            (g.tenant['id'],)).fetchone()
+
+    @app.get('/admin/organization')
+    @roles_required('admin')
+    def admin_organization():
+        return render_template('admin_organization.html', organization=organization(), saved=request.args.get('saved') == '1')
+
+    @app.post('/admin/organization')
+    @roles_required('admin')
+    def update_organization():
+        limits = dict(name=160, contact_name=160, contact_email=254, phone=60, address=1000)
+        values = {key: request.form.get(key, '').strip() for key in limits}
+        detail = reason()
+        if not values['name'] or any(len(values[key]) > limit for key, limit in limits.items()):
+            abort(400, 'Provide an organization name and keep each field within its displayed limit.')
+        if values['contact_email'] and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', values['contact_email']):
+            abort(400, 'Enter a valid contact email address or leave it blank.')
+        if any(any(ord(c) < 32 and not (key == 'address' and c in '\r\n\t') for c in value) for key, value in values.items()):
+            abort(400, 'Remove control characters from organization details.')
+        with db():
+            db().execute('BEGIN IMMEDIATE')
+            from flask import session
+            acting = member(g.user['id'])
+            if 'admin' not in acting['roles'].split(',') or epoch(db(), g.tenant['id'], g.user['id']) != session.get('membership_epoch', 0):
+                abort(403, 'Your access changed. Sign in again.')
+            current = organization()
+            if request.form.get('version') != str(current['version']):
+                abort(409, 'Organization details changed. Reload before saving again.')
+            changes = {key: {'before': current[key], 'after': value} for key, value in values.items() if current[key] != value}
+            if changes:
+                db().execute('UPDATE tenants SET name=? WHERE id=?', (values['name'], g.tenant['id']))
+                db().execute('INSERT INTO organization_profiles(tenant_id,contact_name,contact_email,phone,address,version) '
+                             'VALUES(?,?,?,?,?,1) ON CONFLICT(tenant_id) DO UPDATE SET '
+                             'contact_name=excluded.contact_name,contact_email=excluded.contact_email,'
+                             'phone=excluded.phone,address=excluded.address,version=version+1',
+                             (g.tenant['id'], values['contact_name'], values['contact_email'], values['phone'], values['address']))
+                record(g.user['id'], 'organization_updated', json.dumps({'reason': detail, 'changes': changes}, ensure_ascii=False))
+        return redirect(url_for('admin_organization', saved='1'))
 
     @app.get('/admin/users')
     @roles_required('admin')

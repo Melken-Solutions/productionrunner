@@ -166,3 +166,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_open_batch_rework ON rework_cases(ticket_i
 CREATE UNIQUE INDEX IF NOT EXISTS one_open_unit_rework ON rework_cases(unit_id) WHERE unit_id IS NOT NULL AND result IS NULL;
 CREATE TRIGGER IF NOT EXISTS rework_no_delete BEFORE DELETE ON rework_cases BEGIN SELECT RAISE(ABORT,'Rework history cannot be deleted'); END;
 CREATE TRIGGER IF NOT EXISTS rework_final_no_update BEFORE UPDATE ON rework_cases WHEN OLD.result IS NOT NULL BEGIN SELECT RAISE(ABORT,'Final rework evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS organization_profiles (
+ tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id),
+ contact_name TEXT NOT NULL DEFAULT '', contact_email TEXT NOT NULL DEFAULT '',
+ phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '',
+ version INTEGER NOT NULL DEFAULT 0
+);

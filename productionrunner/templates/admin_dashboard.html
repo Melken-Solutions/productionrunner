@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% block content %}
+<p class="eyebrow">ADMINISTRATION</p><h1>Admin portal</h1><p>{{ g.tenant.name }}</p>
+<div class="grid panels">
+<section class="card"><h2>Organization management</h2><p>Manage your organization’s name, contact information and address. View its sign-in code.</p><a class="button" href="{{ url_for('admin_organization') }}">Manage organization</a></section>
+<section class="card"><h2>User management</h2><p>Create users, assign roles, manage PINs and control organization access.</p><a class="button" href="{{ url_for('admin_users') }}">Manage users</a></section>
+<section class="card"><h2>Production controls</h2><p>Open a ticket to cancel remaining work, or open held work to authorize repair and independent reinspection.</p><a class="button" href="{{ url_for('index') }}">Open production tickets</a></section>
+<section class="card"><h2>Security history</h2><p>Review sign-ins and administrative changes for your organization.</p><a class="button" href="{{ url_for('security_history') }}">View security history</a></section>
+</div>{% endblock %}
