@@ -67,7 +67,7 @@ Both sign-in methods share a persistent five-failure limit per organization/user
 4. Sign in as `inspector`. Record a pass with evidence to accept the batch, or a failure to hold it. A user who completed any production step cannot inspect that ticket, even if assigned both roles.
 5. Inspect the audit history. Refresh or restart the server: records persist.
 
-Batch tracking remains the default. New serial tickets now create independent unit travelers and progress records. Serials must be unique **within the ticket**; no cross-ticket serial registry is enforced. Split/merge, different route definitions per unit, rework and hold release are not implemented.
+Batch tracking remains the default. New serial tickets now create independent unit travelers and progress records. Serials must be unique **within the ticket**; no cross-ticket serial registry is enforced. Split/merge and different route definitions per unit are not implemented. Held work supports documented repair and independent reinspection as described below.
 
 ## Try independent serial travelers
 
@@ -140,4 +140,24 @@ Stop the server, back up SQLite, and run `init-db` before restart. The upgrade a
 
 The **Admin** header link opens a central portal for organization details, users, production controls and security history. Choose **Manage organization** to edit the current organization’s display name, contact name/email, phone and address. Contact fields are optional. Its existing organization sign-in code remains read-only, so a name change does not affect login. Name changes appear in the header and newly rendered travelers; previously printed paper is unchanged. Contact details do not send notifications.
 
-Only admins of the current organization can view or change its profile. Saves require a reason, reject stale forms, and atomically record before/after values in security history. Other organizations cannot be selected through a form or URL. This first version manages the signed-in organization; creating organizations remains a trusted local `add-tenant` operation, and a cross-organization platform-admin console is not implemented. Back up the database and run `init-db` before restarting to add the profile table without changing existing organization names or sign-in codes.
+Local admins can view or change only their current organization’s profile. Saves require a reason, reject stale forms, and atomically record before/after values in security history. Other organizations cannot be selected through a form or URL. This first version manages the signed-in organization; developer admins manage organizations separately at `/developer`. Back up the database and run `init-db` before restarting to add the profile table without changing existing organization names or sign-in codes.
+
+
+## Two admin levels
+
+**Organization Admin** uses the normal organization sign-in and manages only that organization’s profile, members, PINs and production controls. The local role remains `admin`. It cannot grant developer access.
+
+**Developer Admin** signs in at `/developer/login` with a separate platform username/password, without an organization code or PIN. The developer portal lists all organizations, creates an organization and its initial local admin atomically, edits organization profiles, creates additional local admins, and grants/removes local admin from existing organization members. Removing the last local admin is blocked. Removing an admin’s only role disables their organization access; other roles are preserved. Assignments invalidate affected membership sessions. Existing global usernames are not claimed or reset when creating local admins.
+
+Developer accounts are provisioned only by the trusted local host:
+
+```sh
+python -m flask --app productionrunner add-developer your-name --reason 'Initial developer administrator'
+python -m flask --app productionrunner set-developer-access your-name --inactive --reason 'Access revoked'
+```
+
+The first command prompts for a confirmed password (12–256 characters). Use `--active` to restore access. Last-active-developer protection applies; disabling/restoring increments a credential version so old sessions cannot return. Developer creation/access changes are recorded with the local OS actor. No developer password or role management is exposed to organization admins.
+
+Developer sign-in uses durable account/source throttling and CSRF protection. Its credential store and sessions are separate from organization users. Developer access does not grant manufacturing execution or inspection, and the portal does not impersonate a tenant user. Sign out and use an individual organization account for production work. Platform writes record immutable platform history; local admins can see developer changes to their own organization in Security History. Organization deletion/suspension and browser-based developer-account provisioning are outside this slice.
+
+Back up SQLite and run `init-db` before restarting to add the separate developer accounts and platform history tables. No existing organization account is automatically promoted.

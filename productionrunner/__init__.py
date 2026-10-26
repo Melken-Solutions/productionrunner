@@ -124,6 +124,8 @@ def create_app(config=None):
     register_commands(app)
     from .admin import register_admin
     register_admin(app, db, roles_required)
+    from .developer_admin import register_developer
+    register_developer(app, db, now)
     from .production_controls import register_controls
     register_controls(app, db, roles_required, now, lock_ticket)
     from .pin_auth import authenticate, register_pin_auth

@@ -112,4 +112,5 @@ def register_pin_auth(app, db, roles_required):
         from flask import render_template
         entries = db().execute('SELECT a.*,u.username FROM auth_events a JOIN users u ON u.id=a.user_id '
                                'WHERE a.tenant_id=? ORDER BY a.id DESC LIMIT 200', (g.tenant['id'],)).fetchall()
-        return render_template('security_history.html', entries=entries)
+        platform_entries = db().execute('SELECT * FROM platform_events WHERE tenant_id=? ORDER BY id DESC LIMIT 100', (g.tenant['id'],)).fetchall()
+        return render_template('security_history.html', entries=entries, platform_entries=platform_entries)

@@ -173,3 +173,14 @@ CREATE TABLE IF NOT EXISTS organization_profiles (
  phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '',
  version INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS developer_accounts (
+ id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+ active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), version INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS platform_events (
+ id INTEGER PRIMARY KEY, actor TEXT NOT NULL, tenant_id INTEGER REFERENCES tenants(id),
+ action TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS platform_events_no_update BEFORE UPDATE ON platform_events BEGIN SELECT RAISE(ABORT,'Platform history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS platform_events_no_delete BEFORE DELETE ON platform_events BEGIN SELECT RAISE(ABORT,'Platform history is immutable'); END;
