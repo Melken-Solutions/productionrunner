@@ -124,6 +124,10 @@ def create_app(config=None):
     register_commands(app)
     from .admin import register_admin
     register_admin(app, db, roles_required)
+    from .dispatch import register_dispatch
+    register_dispatch(app, db, roles_required, now, lock_ticket, event)
+    from .tv_boards import register_tv
+    register_tv(app, db, roles_required, now)
     from .shop_floor import register_shop_floor
     register_shop_floor(app, db, roles_required)
     from .developer_admin import register_developer
@@ -148,7 +152,8 @@ def create_app(config=None):
                                auth_method=request.form.get('method', 'password'),
                                membership_epoch=identity['membership_epoch'], pin_version=identity['version'], csrf=secrets.token_hex(32))
                 session.permanent = True
-                return redirect(url_for('index'))
+                member_roles = db().execute('SELECT roles FROM memberships WHERE tenant_id=? AND user_id=?', (identity['tenant_id'], identity['id'])).fetchone()[0].split(',')
+                return redirect(url_for('tv_boards' if 'display' in member_roles else 'index'))
             error = 'Too many attempts. Try again in 15 minutes.' if status == 429 else 'Organization, username or credential is incorrect.'
             response = app.make_response((render_template('login.html', error=error), status))
             if status == 429:
@@ -244,6 +249,7 @@ def create_app(config=None):
         with db():
             db().execute('INSERT INTO tickets(id,tenant_id,pn,revision,quantity,tracking,serials,instructions,state,created_by,created_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)',
                          (ticket_id, g.tenant['id'], pn, revision, quantity, tracking, json.dumps(serials), instructions, 'ready', g.user['id'], now()))
+            db().execute('INSERT INTO ticket_dispatch VALUES(?,?,0)', (g.tenant['id'], ticket_id))
             for sequence, line in enumerate(route, 1):
                 name, _, detail = line.partition('|')
                 if not name.strip():
@@ -284,13 +290,16 @@ def create_app(config=None):
             operation = db().execute('SELECT * FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by IS NULL ORDER BY sequence LIMIT 1', (ticket_id, g.tenant['id'])).fetchone()
             if not operation or request.form.get('operation_id') != str(operation['id']):
                 abort(409, 'Only the next routing operation can be completed.')
+            from .dispatch import require_dispatch, snapshot
+            require_dispatch(db(), g.tenant['id'], ticket_id, operation['id'])
             if request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm that the entire batch completed this operation.')
             db().execute('UPDATE operations SET completed_by=?, completed_at=? WHERE id=? AND tenant_id=?', (g.user['id'], now(), operation['id'], g.tenant['id']))
             remaining = db().execute('SELECT COUNT(*) FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by IS NULL', (ticket_id, g.tenant['id'])).fetchone()[0]
             state = 'in_progress' if remaining else 'awaiting_inspection'
             db().execute('UPDATE tickets SET state=?,version=version+1 WHERE id=? AND tenant_id=?', (state, ticket_id, g.tenant['id']))
-            event(ticket_id, 'operation_completed', f"{operation['sequence']}: {operation['name']}")
+            attribution = snapshot(db(), g.tenant['id'], ticket_id, operation['id'], g.user['id'], now())
+            event(ticket_id, 'operation_completed', f"{operation['sequence']}: {operation['name']}. {attribution}")
         if request.form.get('shop_floor') == '1':
             return redirect(url_for('shop_work', code=ticket_id))
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))

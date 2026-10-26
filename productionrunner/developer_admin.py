@@ -191,6 +191,8 @@ def register_developer(app, db, now):
                 abort(409, 'Membership changed. Reload before saving.')
             roles = set(filter(None,target['roles'].split(',')))
             if action=='grant':
+                if 'display' in roles:
+                    abort(400, 'Display accounts must remain read-only. Create an individual local admin instead.')
                 roles.add('admin')
             else:
                 roles.discard('admin')

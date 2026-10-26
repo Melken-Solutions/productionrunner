@@ -8,12 +8,12 @@ import click
 from werkzeug.security import generate_password_hash
 
 
-ROLES = {'planner', 'operator', 'inspector', 'admin', 'viewer'}
+ROLES = {'planner', 'operator', 'inspector', 'admin', 'viewer', 'display'}
 
 
 def validate_roles(value):
     assigned = set(value.split(','))
-    if not assigned or not assigned <= ROLES:
+    if not assigned or not assigned <= ROLES or ('display' in assigned and len(assigned)>1):
         raise click.ClickException('Unknown role.')
     return ','.join(sorted(assigned))
 

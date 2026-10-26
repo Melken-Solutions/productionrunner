@@ -1,0 +1,1 @@
+{% set attribution=route_attribution(o,unit if unit is defined else none) %}{% if attribution %}<p><small>Station: {{ attribution.station_name }} · Assigned operator: {{ attribution.username or 'Shared / unassigned' }}{% if attribution.actual_username %} · Completed by: {{ attribution.actual_username }}{% endif %}</small></p>{% endif %}

@@ -96,10 +96,13 @@ def register_serials(app, db, roles_required, now):
             if request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm completion for this individual unit.')
             operation = remaining[0]
+            from .dispatch import require_dispatch, snapshot
+            require_dispatch(db(), unit['tenant_id'], unit['ticket_id'], operation['id'])
             db().execute('INSERT INTO unit_completions VALUES(?,?,?,?,?,?)',
                          (unit['tenant_id'], unit['ticket_id'], unit_id, operation['id'], g.user['id'], now()))
             update_unit_state(db(), unit, 'in_progress' if len(remaining) > 1 else 'awaiting_inspection')
-            unit_event(unit, 'unit_operation_completed', f"{operation['sequence']}: {operation['name']}")
+            attribution = snapshot(db(), unit['tenant_id'], unit['ticket_id'], operation['id'], g.user['id'], now(), unit_id)
+            unit_event(unit, 'unit_operation_completed', f"{operation['sequence']}: {operation['name']}. {attribution}")
         if request.form.get('shop_floor') == '1':
             return redirect(url_for('shop_work', code=unit_id))
         return redirect(url_for('unit_detail', unit_id=unit_id))

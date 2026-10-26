@@ -1,4 +1,5 @@
 """Touch-first read/confirmation views; execution uses the existing guarded endpoints."""
+from .dispatch import released
 from flask import abort, g, redirect, render_template, request, url_for
 
 
@@ -35,7 +36,7 @@ def register_shop_floor(app, db, roles_required):
         next_op = next((o for o in operations if o['completed_by'] is None),None)
         return dict(ticket=ticket,unit=unit,target=target,operations=operations,next_operation=next_op,
                     has_units=has_units,cancelled=cancelled,code=code,
-                    can_complete=not cancelled and not has_units and target['state'] in {'ready','in_progress'} and next_op is not None)
+                    can_complete=released(db(),g.tenant['id'],ticket['id']) and not cancelled and not has_units and target['state'] in {'ready','in_progress'} and next_op is not None)
 
     @app.get('/shop-floor')
     @roles_required('operator')

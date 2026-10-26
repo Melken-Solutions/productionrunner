@@ -184,3 +184,42 @@ CREATE TABLE IF NOT EXISTS platform_events (
 );
 CREATE TRIGGER IF NOT EXISTS platform_events_no_update BEFORE UPDATE ON platform_events BEGIN SELECT RAISE(ABORT,'Platform history is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS platform_events_no_delete BEFORE DELETE ON platform_events BEGIN SELECT RAISE(ABORT,'Platform history is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS stations (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL REFERENCES tenants(id), name TEXT NOT NULL,
+ active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,name), UNIQUE(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS operation_assignments (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, operation_id INTEGER PRIMARY KEY,
+ station_id INTEGER NOT NULL, operator_id INTEGER,
+ FOREIGN KEY(tenant_id,ticket_id,operation_id) REFERENCES operations(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,station_id) REFERENCES stations(tenant_id,id),
+ FOREIGN KEY(tenant_id,operator_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS ticket_dispatch (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT PRIMARY KEY, released INTEGER NOT NULL DEFAULT 0 CHECK(released IN (0,1)),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS completion_assignments (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, operation_id INTEGER NOT NULL,
+ unit_id TEXT, station_id INTEGER, station_name TEXT, assigned_user_id INTEGER, assigned_username TEXT,
+ actual_user_id INTEGER NOT NULL, completed_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,operation_id) REFERENCES operations(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,station_id) REFERENCES stations(tenant_id,id),
+ FOREIGN KEY(tenant_id,assigned_user_id) REFERENCES memberships(tenant_id,user_id),
+ FOREIGN KEY(tenant_id,actual_user_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS batch_assignment_snapshot ON completion_assignments(operation_id) WHERE unit_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS unit_assignment_snapshot ON completion_assignments(unit_id,operation_id) WHERE unit_id IS NOT NULL;
+CREATE TRIGGER IF NOT EXISTS completion_assignments_no_update BEFORE UPDATE ON completion_assignments BEGIN SELECT RAISE(ABORT,'Completion assignments are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS completion_assignments_no_delete BEFORE DELETE ON completion_assignments BEGIN SELECT RAISE(ABORT,'Completion assignments are immutable'); END;
+CREATE TABLE IF NOT EXISTS station_events (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,station_id INTEGER NOT NULL,actor_id INTEGER NOT NULL,
+ action TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,station_id) REFERENCES stations(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TRIGGER IF NOT EXISTS station_events_no_update BEFORE UPDATE ON station_events BEGIN SELECT RAISE(ABORT,'Station history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS station_events_no_delete BEFORE DELETE ON station_events BEGIN SELECT RAISE(ABORT,'Station history is immutable'); END;

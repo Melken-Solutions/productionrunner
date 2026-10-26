@@ -32,7 +32,7 @@ def protects_last_admin(conn, tenant_id, user_id, assigned):
 def register_admin(app, db, roles_required):
     def selected_roles():
         values = set(request.form.getlist('roles'))
-        if not values or not values <= ROLES:
+        if not values or not values <= ROLES or ('display' in values and len(values)>1):
             abort(400, 'Select at least one valid role.')
         return ','.join(sorted(values))
 

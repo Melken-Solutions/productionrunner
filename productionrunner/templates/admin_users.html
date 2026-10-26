@@ -4,5 +4,5 @@
 <section class="card"><h2>Add a user</h2><p>Create a unique individual account. Share the initial password privately. PIN enrollment is available after creation.</p><form method="post" class="stack" action="{{ url_for('admin_create_user') }}">
 <input type="hidden" name="csrf" value="{{ session.csrf }}"><label>Username<input name="username" required maxlength="80" autocomplete="off"></label>
 <label>Initial password<input type="password" name="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><label>Confirm password<input type="password" name="password_confirm" required minlength="12" maxlength="256" autocomplete="new-password"></label>
-<fieldset><legend>Roles</legend>{% for role in roles %}<label class="check"><input type="checkbox" name="roles" value="{{ role }}">{{ role }}</label>{% endfor %}</fieldset>
+<fieldset><legend>Roles</legend><p>For a TV, select only display. Display accounts can view TV boards and cannot change production.</p>{% for role in roles %}<label class="check"><input type="checkbox" name="roles" value="{{ role }}">{{ role }}</label>{% endfor %}</fieldset>
 <label>Reason (do not include credentials)<textarea name="reason" required maxlength="500"></textarea></label><button>Create user</button></form></section>{% endblock %}

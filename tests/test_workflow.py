@@ -32,10 +32,16 @@ def post(client, path, **data):
     return client.post(path, data=data)
 
 
-def create_ticket(client, **overrides):
+def create_ticket(client, legacy=True, **overrides):
     data = dict(pn='PN-001', revision='A', quantity='2', tracking='batch', instructions='Check drawing tolerance ±0.1 mm', route='Cut | Cut to size\nAssemble | Fit the pieces')
     data.update(overrides)
-    return post(client, '/tickets/new', **data)
+    response = post(client, '/tickets/new', **data)
+    if legacy and response.status_code == 302:
+        # Existing workflow fixtures model pre-dispatch travelers. New dispatch tests
+        # use legacy=False and exercise assignment/release through the public endpoints.
+        with sqlite3.connect(client.application.config['DATABASE']) as conn:
+            conn.execute('DELETE FROM ticket_dispatch WHERE ticket_id=?', (response.location.split('/')[-1],))
+    return response
 
 
 def rows(app, query, args=()):
