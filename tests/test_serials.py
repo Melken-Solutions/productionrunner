@@ -118,6 +118,7 @@ def test_independence_is_per_unit_and_membership_still_applies(app):
     client, _, units, ops = prepared_units(app)
     runner = app.test_cli_runner()
     assert runner.invoke(args=['set-membership', 'planner', '--tenant', 'alpha', '--roles', 'planner,operator']).exit_code == 0
+    sign_in(client, 'planner')  # Role changes invalidate existing sessions.
     for version, op in enumerate(ops, 1):
         assert complete(client, units[0], op, version).status_code == 302
     sign_in(client, 'operator')

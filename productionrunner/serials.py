@@ -15,6 +15,25 @@ def create_units(conn, tenant_id, ticket_id, serials):
                      ('JR-U-' + secrets.token_hex(6).upper(), tenant_id, ticket_id, serial))
 
 
+def update_unit_state(conn, unit, state):
+    conn.execute('UPDATE serial_units SET state=?,version=version+1 WHERE tenant_id=? AND id=?',
+                 (state, unit['tenant_id'], unit['id']))
+    states = {u['state'] for u in units_for(conn, unit['tenant_id'], unit['ticket_id'])}
+    if 'held' in states:
+        summary = 'held'
+    elif states == {'accepted'}:
+        summary = 'accepted'
+    elif states == {'ready'}:
+        summary = 'ready'
+    elif states <= {'awaiting_inspection', 'accepted'}:
+        summary = 'awaiting_inspection'
+    else:
+        summary = 'in_progress'
+    conn.execute('UPDATE tickets SET state=?,version=version+1 WHERE tenant_id=? AND id=?',
+                 (summary, unit['tenant_id'], unit['ticket_id']))
+
+
+
 def register_serials(app, db, roles_required, now):
     def get_unit(unit_id):
         unit = db().execute('SELECT * FROM serial_units WHERE tenant_id=? AND id=?', (g.tenant['id'], unit_id)).fetchone()
@@ -40,26 +59,11 @@ def register_serials(app, db, roles_required, now):
     def lock_unit(unit_id):
         db().execute('BEGIN IMMEDIATE')
         unit = get_unit(unit_id)
+        from .production_controls import require_active
+        require_active(db(), unit['tenant_id'], unit['ticket_id'])
         if request.form.get('version') != str(unit['version']):
             abort(409, 'This unit changed. Reload before submitting again.')
         return unit
-
-    def update_state(unit, state):
-        db().execute('UPDATE serial_units SET state=?,version=version+1 WHERE tenant_id=? AND id=?',
-                     (state, unit['tenant_id'], unit['id']))
-        states = {u['state'] for u in units_for(db(), unit['tenant_id'], unit['ticket_id'])}
-        if 'held' in states:
-            summary = 'held'
-        elif states == {'accepted'}:
-            summary = 'accepted'
-        elif states == {'ready'}:
-            summary = 'ready'
-        elif states <= {'awaiting_inspection', 'accepted'}:
-            summary = 'awaiting_inspection'
-        else:
-            summary = 'in_progress'
-        db().execute('UPDATE tickets SET state=?,version=version+1 WHERE tenant_id=? AND id=?',
-                     (summary, unit['tenant_id'], unit['ticket_id']))
 
     def context(unit):
         ticket = db().execute('SELECT t.*, p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND t.id=?',
@@ -94,7 +98,7 @@ def register_serials(app, db, roles_required, now):
             operation = remaining[0]
             db().execute('INSERT INTO unit_completions VALUES(?,?,?,?,?,?)',
                          (unit['tenant_id'], unit['ticket_id'], unit_id, operation['id'], g.user['id'], now()))
-            update_state(unit, 'in_progress' if len(remaining) > 1 else 'awaiting_inspection')
+            update_unit_state(db(), unit, 'in_progress' if len(remaining) > 1 else 'awaiting_inspection')
             unit_event(unit, 'unit_operation_completed', f"{operation['sequence']}: {operation['name']}")
         return redirect(url_for('unit_detail', unit_id=unit_id))
 
@@ -112,7 +116,7 @@ def register_serials(app, db, roles_required, now):
                 abort(400, 'Choose pass or fail and record evidence (up to 4000 characters).')
             db().execute('INSERT INTO unit_inspections VALUES(?,?,?,?,?,?,?)',
                          (unit['tenant_id'], unit['ticket_id'], unit_id, g.user['id'], result, notes, now()))
-            update_state(unit, 'accepted' if result == 'pass' else 'held')
+            update_unit_state(db(), unit, 'accepted' if result == 'pass' else 'held')
             unit_event(unit, 'unit_inspection_' + result, notes)
         return redirect(url_for('unit_detail', unit_id=unit_id))
 

@@ -51,7 +51,8 @@ def authenticate(conn, clock):
         if valid:
             conn.execute('DELETE FROM login_limits WHERE key=?', (keys[0][0],))
             audit(conn, identity['tenant_id'], identity['id'], 'login_success', f"user:{identity['id']}", timestamp, method)
-            return dict(identity), 302
+            from .admin import epoch
+            return dict(identity, membership_epoch=epoch(conn, identity['tenant_id'], identity['id'])), 302
         for key, _ in keys:
             conn.execute('INSERT INTO login_limits(key,failures,expires_at) VALUES(?,1,?) '
                          'ON CONFLICT(key) DO UPDATE SET failures=failures+1', (key, timestamp + WINDOW))
@@ -99,6 +100,8 @@ def register_pin_auth(app, db, roles_required):
             conn.execute('INSERT INTO pin_credentials(tenant_id,user_id,pin_hash,version) VALUES(?,?,?,1) '
                          'ON CONFLICT(tenant_id,user_id) DO UPDATE SET pin_hash=excluded.pin_hash,version=version+1',
                          (*member, pin_hash))
+            from .admin import bump
+            bump(conn, *member)
             action = 'pin_disabled' if disable else ('pin_reset' if old else 'pin_enrolled')
             audit(conn, *member, action, 'local-os:' + getpass.getuser(), app.config['AUTH_CLOCK'](), reason.strip())
         click.echo('PIN updated. Existing PIN sessions for this membership are invalidated.')

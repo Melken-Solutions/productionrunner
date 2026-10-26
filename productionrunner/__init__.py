@@ -68,6 +68,9 @@ def create_app(config=None):
             'SELECT t.*, m.roles FROM tenants t JOIN memberships m ON m.tenant_id=t.id '
             'WHERE t.id=? AND m.user_id=? AND m.roles != ? ',
             (session.get('tenant_id'), session.get('user_id'), '')).fetchone() if g.user else None
+        from .admin import epoch
+        if g.tenant and epoch(db(), g.tenant['id'], g.user['id']) != session.get('membership_epoch', 0):
+            g.tenant = None
         g.roles = g.tenant['roles'].split(',') if g.tenant else []
         if g.user and not g.tenant:
             session.clear()
@@ -111,12 +114,18 @@ def create_app(config=None):
     def lock_ticket(ticket_id):
         db().execute('BEGIN IMMEDIATE')
         ticket = ticket_or_404(ticket_id)
+        from .production_controls import require_active
+        require_active(db(), g.tenant['id'], ticket_id)
         if request.form.get('version') != str(ticket['version']):
             abort(409, 'This ticket changed. Reload before submitting again.')
         return ticket
 
     from .tenancy import register_commands
     register_commands(app)
+    from .admin import register_admin
+    register_admin(app, db, roles_required)
+    from .production_controls import register_controls
+    register_controls(app, db, roles_required, now, lock_ticket)
     from .pin_auth import authenticate, register_pin_auth
     register_pin_auth(app, db, roles_required)
     from .serials import create_units, units_for, register_serials
@@ -133,7 +142,7 @@ def create_app(config=None):
                 session.clear()
                 session.update(user_id=identity['id'], tenant_id=identity['tenant_id'],
                                auth_method=request.form.get('method', 'password'),
-                               pin_version=identity['version'], csrf=secrets.token_hex(32))
+                               membership_epoch=identity['membership_epoch'], pin_version=identity['version'], csrf=secrets.token_hex(32))
                 session.permanent = True
                 return redirect(url_for('index'))
             error = 'Too many attempts. Try again in 15 minutes.' if status == 429 else 'Organization, username or credential is incorrect.'
@@ -151,7 +160,7 @@ def create_app(config=None):
     @app.get('/')
     @roles_required()
     def index():
-        tickets = db().execute('SELECT t.*, p.priority AS hot_priority, p.hot_since FROM tickets t LEFT JOIN ticket_priorities p ON p.ticket_id=t.id AND p.tenant_id=t.tenant_id WHERE t.tenant_id=? ORDER BY (p.priority IS NULL), p.priority, p.hot_since, CASE WHEN p.priority IS NOT NULL THEN t.id END, t.created_at DESC, t.id', (g.tenant['id'],)).fetchall()
+        tickets = db().execute('SELECT t.*, p.priority AS hot_priority, p.hot_since FROM tickets t LEFT JOIN ticket_priorities p ON p.ticket_id=t.id AND p.tenant_id=t.tenant_id WHERE t.tenant_id=? ORDER BY EXISTS(SELECT 1 FROM ticket_cancellations x WHERE x.ticket_id=t.id AND x.tenant_id=t.tenant_id), (p.priority IS NULL), p.priority, p.hot_since, CASE WHEN p.priority IS NOT NULL THEN t.id END, t.created_at DESC, t.id', (g.tenant['id'],)).fetchall()
         return render_template('index.html', tickets=tickets)
 
     @app.post('/tickets/<ticket_id>/priority')

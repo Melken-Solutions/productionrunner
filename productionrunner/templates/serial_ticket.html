@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block content %}{% include "ticket_drawing.html" %}
+{% block content %}{% include 'cancellation.html' %}{% include "ticket_drawing.html" %}
 <p class="eyebrow">TICKET / {{ ticket.id }}</p>
 <h1>{{ ticket.pn }} · Rev {{ ticket.revision }}</h1>
 <p>{{ ticket.quantity }} independent units · Summary: <strong>{{ ticket.state|replace('_',' ') }}</strong></p>
@@ -14,4 +14,4 @@
 </section>
 <section class="card"><h2>Work instructions</h2><p class="preserve">{{ ticket.instructions }}</p><h2>Shared route definition</h2><ol>{% for o in operations %}<li><strong>{{ o.name }}</strong> — {{ o.instructions }}</li>{% endfor %}</ol></section>
 <section class="card"><h2>Audit history — all units</h2><ol>{% for e in events %}<li><strong>{{ e.action|replace('_',' ') }}</strong> · {{ e.username }}<p class="preserve">{{ e.detail }}</p><small>{{ e.created_at }}</small></li>{% endfor %}</ol></section>
-{% endblock %}
+{% include 'production_controls.html' %}{% endblock %}

@@ -48,9 +48,9 @@ New serial tickets normalize units, per-unit completions and per-unit inspection
 
 ## State and consistency
 
-`ready → in_progress → awaiting_inspection → accepted | held`. A one-step route moves directly from `ready` to `awaiting_inspection` on completion. Ticket creation and route insertion share one transaction. Operation and inspection writes acquire `BEGIN IMMEDIATE`, compare the submitted version to the current ticket version and commit their event in the same transaction. Duplicate/stale forms return HTTP 409; they do not create duplicate events. Operation sequence is checked server-side, not trusted from the form. Inspection checks every completed operation's actor. Held and accepted states have no outgoing workflow actions.
+`ready → in_progress → awaiting_inspection → accepted | held`. A one-step route moves directly from `ready` to `awaiting_inspection` on completion. Ticket creation and route insertion share one transaction. Operation and inspection writes acquire `BEGIN IMMEDIATE`, compare the submitted version to the current ticket version and commit their event in the same transaction. Duplicate/stale forms return HTTP 409; they do not create duplicate events. Operation sequence is checked server-side, not trusted from the form. Inspection checks every completed operation's actor. Held work can enter an admin-authorized rework case; it remains held until an independent passing reinspection. Accepted work is terminal.
 
-Event updates/deletes are blocked by SQLite triggers. This is application audit history, not cryptographic tamper evidence: a database owner can alter schema or data. Administrative controls, retention and external audit export are production work.
+Event updates/deletes are blocked by SQLite triggers. This is application audit history, not cryptographic tamper evidence: a database owner can alter schema or data. Retention and external audit export remain production work.
 
 ## Permission matrix
 
@@ -61,9 +61,9 @@ Event updates/deletes are blocked by SQLite triggers. This is application audit 
 | Request print/reprint | Yes | Yes | No | No | No |
 | Complete next operation | No | Yes | No | No | No |
 | Inspect completed batch | No | No | Yes, if independent | No | No |
-| Bypass inspection / release hold | No | No | No | No | No |
+| Directly bypass inspection / release hold | No | No | No | No | No |
 
-Roles combine explicitly, but independence is based on actor identity. All authenticated users may view/print a traveler through the browser; the print-request action records intent, not a physical print guarantee. User provisioning is an operator-controlled CLI, outside the web role matrix.
+Roles combine explicitly, but independence is based on actor identity. All authenticated users may view/print a traveler through the browser; the print-request action records intent, not a physical print guarantee. Admins manage tenant users and PINs, cancel nonaccepted tickets and authorize rework. Operators complete repairs; independent inspectors reinspect. Admin does not imply either execution role. Trusted local-host CLI provisioning remains available.
 
 ## Security and operating limits
 
@@ -85,7 +85,7 @@ Tickets, operations, inspections and events carry tenant IDs. Queue, ticket, sca
 
 `migrate-tenancy` is an offline, explicit migration for the original MVP only. It makes a private, non-overwriting SQLite backup, rebuilds tables in one exclusive transaction, preserves legacy IDs/data, and checks foreign keys before commit. All old records go to the one explicitly named organization. It does not infer ownership or split previously mixed-company data. Stop writers before backup/migration and retain the prior application version for backup restoration.
 
-Application tenant isolation does not restrict a trusted database/file administrator. Existing production authentication/hosting limitations still apply. User-provisioning and role-change audit events remain pending.
+Application tenant isolation does not restrict a trusted database/file administrator. Existing production authentication/hosting limitations still apply. Web account creation and all web/CLI membership changes are audited; original CLI add-user bootstrap provisioning remains a trusted host action.
 
 ## PIN credentials and authentication audit
 
@@ -103,7 +103,7 @@ Each unit has its own workflow state and optimistic version. `BEGIN IMMEDIATE` p
 
 Ticket state is a summary: any held unit → held; all accepted → accepted; all ready → ready; only awaiting-inspection/accepted units → awaiting_inspection; otherwise → in_progress. A held summary does not block work on other units. A held/accepted unit itself has no outgoing actions. Ticket pages show completed step counts per unit; scans resolve either the ticket overview or an individual unit. Parent printing produces a cover sheet; unit printing produces a quantity-one traveler. Neither paper nor ticket summary authorizes shipment.
 
-`init-db` adds the serial tables/indexes without rewriting old tickets. Existing serial inventory continues whole-batch execution, including its original independence rule. No silent historical backfill or conversion is performed. This slice does not implement unit-specific route definitions, serial reassignment, split/merge, genealogy, rework, hold release, or global serial uniqueness. Physical unit traveler qualification remains outstanding.
+`init-db` adds the serial tables/indexes without rewriting old tickets. Existing serial inventory continues whole-batch execution, including its original independence rule. No silent historical backfill or conversion is performed. This slice does not implement unit-specific route definitions, serial reassignment, split/merge, genealogy, multi-step rework routes, concessions, or global serial uniqueness. Physical unit traveler qualification remains outstanding.
 
 ## HOT queue priority
 
@@ -125,3 +125,12 @@ Formal document approval, supersession/withdrawal, revision correction, bulk imp
 `part_dxf` stores one immutable file per tenant-owned part revision with original bytes, SHA-256, uploader and UTC time. Revision creation can add the file in the same transaction as its PDF/link and audit records. Existing revisions can receive their first DXF through a planner/admin-only POST. A unique key prevents competing uploads from replacing the first successful file; update/delete triggers preserve it. Existing ticket mappings resolve that same revision's DXF without copying or changing the drawing association.
 
 CSRF-protected download POSTs authorize tenant membership, log `dxf_download_requested`, then send the exact bytes as an octet-stream attachment with a sanitized PN/revision filename, no-store/nosniff and sandbox headers. Download requests do not claim completed transfer, machine import or operation completion. The upload cap is 20 MB, with nonempty/extension checks only; opaque-byte storage preserves text and binary content without parsing or conversion. Laser integration, geometry/unit verification, executable toolpath generation and malware inspection are outside this feature.
+
+
+## Admin controls
+
+`membership_controls` stores optimistic edit versions and a separate session epoch per tenant/user. Role/access changes increment both; PIN changes increment the edit version and the existing PIN credential version. Login captures the epoch inside the authentication transaction; every request checks it before authorizing access. Revocation followed by restoration cannot revive an older session. Web changes require reasons and write immutable `auth_events` in the same transaction. `BEGIN IMMEDIATE` serializes last-admin checks and updates. Tenant admins can create new global usernames but cannot claim existing users or reset global passwords shared across organizations.
+
+`ticket_cancellations` is an immutable sidecar preserving historical workflow states. Ticket/unit execution and rework writes check cancellation while holding the SQLite write lock. Queue and traveler views display cancellation; cancelled jobs sort last. This is a software recording gate, not a machine interlock.
+
+`rework_cases` preserves the original inspection and records each repair round, authorization, instructions, criteria, production evidence and independent result. A partial unique index limits each batch/unit to one unresolved case. Versioned writes and ticket/unit audit events commit together. Inspection excludes all original and rework contributors for that batch/unit, across rounds. Pass updates the target state; serial summaries use the same aggregation as original inspection. Failure retains hold and permits another case. Final case evidence cannot be updated or deleted. The initial implementation is a single documented repair step, not a replacement routing engine.

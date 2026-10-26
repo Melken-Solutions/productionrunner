@@ -133,3 +133,36 @@ CREATE TABLE IF NOT EXISTS part_dxf (
 );
 CREATE TRIGGER IF NOT EXISTS part_dxf_no_update BEFORE UPDATE ON part_dxf BEGIN SELECT RAISE(ABORT,'DXF revision files are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS part_dxf_no_delete BEFORE DELETE ON part_dxf BEGIN SELECT RAISE(ABORT,'DXF revision files are immutable'); END;
+
+-- Separate edit versions from session epochs: PIN edits need not log out password sessions.
+CREATE TABLE IF NOT EXISTS membership_controls (
+ tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+ version INTEGER NOT NULL DEFAULT 0, session_epoch INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(tenant_id,user_id),
+ FOREIGN KEY(tenant_id,user_id) REFERENCES memberships(tenant_id,user_id)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_cancellations (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT PRIMARY KEY, actor_id INTEGER NOT NULL,
+ reason TEXT NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TRIGGER IF NOT EXISTS cancellations_no_update BEFORE UPDATE ON ticket_cancellations BEGIN SELECT RAISE(ABORT,'Cancellation is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS cancellations_no_delete BEFORE DELETE ON ticket_cancellations BEGIN SELECT RAISE(ABORT,'Cancellation is immutable'); END;
+CREATE TABLE IF NOT EXISTS rework_cases (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, unit_id TEXT,
+ authorized_by INTEGER NOT NULL, reason TEXT NOT NULL, instructions TEXT NOT NULL, criteria TEXT NOT NULL,
+ created_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1,
+ completed_by INTEGER, completion_notes TEXT, completed_at TEXT,
+ inspector_id INTEGER, result TEXT CHECK(result IN ('pass','fail')), inspection_notes TEXT, inspected_at TEXT,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,authorized_by) REFERENCES memberships(tenant_id,user_id),
+ FOREIGN KEY(tenant_id,completed_by) REFERENCES memberships(tenant_id,user_id),
+ FOREIGN KEY(tenant_id,inspector_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_open_batch_rework ON rework_cases(ticket_id) WHERE unit_id IS NULL AND result IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS one_open_unit_rework ON rework_cases(unit_id) WHERE unit_id IS NOT NULL AND result IS NULL;
+CREATE TRIGGER IF NOT EXISTS rework_no_delete BEFORE DELETE ON rework_cases BEGIN SELECT RAISE(ABORT,'Rework history cannot be deleted'); END;
+CREATE TRIGGER IF NOT EXISTS rework_final_no_update BEFORE UPDATE ON rework_cases WHEN OLD.result IS NOT NULL BEGIN SELECT RAISE(ABORT,'Final rework evidence is immutable'); END;

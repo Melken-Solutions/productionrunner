@@ -1,4 +1,4 @@
-<div class="priority-control">
+{% if not cancellation_for(ticket) %}<div class="priority-control">
 {% if ticket.hot_priority %}<strong class="badge hot">HOT {{ ticket.hot_priority }}</strong>{% else %}<span class="muted">Normal</span>{% endif %}
 {% if 'planner' in g.roles or 'admin' in g.roles %}
 <form method="post" action="{{ url_for('set_priority', ticket_id=ticket.id) }}">
@@ -8,3 +8,4 @@
 {% if ticket.hot_priority %}<button name="action" value="normal" class="secondary" formnovalidate>Clear HOT</button>{% endif %}
 </form>{% endif %}
 </div>
+{% else %}<span>Cancelled</span>{% endif %}

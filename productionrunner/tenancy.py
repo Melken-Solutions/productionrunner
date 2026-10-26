@@ -91,12 +91,22 @@ def register_commands(app):
             raise click.ClickException('Choose exactly one of --roles or --revoke.')
         assigned = '' if revoke else validate_roles(roles)
         with connect(app) as conn:
+            conn.execute('BEGIN IMMEDIATE')
             user = conn.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
             organization = conn.execute('SELECT id FROM tenants WHERE slug=?', (tenant,)).fetchone()
             if not user or not organization:
                 raise click.ClickException('Unknown user or organization.')
+            from .admin import bump, protects_last_admin
+            if protects_last_admin(conn, organization[0], user[0], assigned):
+                raise click.ClickException('Keep at least one active admin. Assign another admin first.')
             conn.execute('INSERT INTO memberships VALUES(?,?,?) ON CONFLICT(tenant_id,user_id) DO UPDATE SET roles=excluded.roles',
                          (organization[0], user[0], assigned))
+            bump(conn, organization[0], user[0], invalidate=True)
+            from .pin_auth import audit
+            import getpass
+            import time
+            audit(conn, organization[0], user[0], 'membership_changed', 'local-os:' + getpass.getuser(), time.time(),
+                  'CLI membership set to: ' + (assigned or 'inactive'))
         click.echo(f'Updated membership for {username} in {tenant}.')
 
     @app.cli.command('migrate-tenancy')
