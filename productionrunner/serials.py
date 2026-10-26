@@ -100,6 +100,8 @@ def register_serials(app, db, roles_required, now):
                          (unit['tenant_id'], unit['ticket_id'], unit_id, operation['id'], g.user['id'], now()))
             update_unit_state(db(), unit, 'in_progress' if len(remaining) > 1 else 'awaiting_inspection')
             unit_event(unit, 'unit_operation_completed', f"{operation['sequence']}: {operation['name']}")
+        if request.form.get('shop_floor') == '1':
+            return redirect(url_for('shop_work', code=unit_id))
         return redirect(url_for('unit_detail', unit_id=unit_id))
 
     @app.post('/units/<unit_id>/inspect')

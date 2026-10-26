@@ -124,6 +124,8 @@ def create_app(config=None):
     register_commands(app)
     from .admin import register_admin
     register_admin(app, db, roles_required)
+    from .shop_floor import register_shop_floor
+    register_shop_floor(app, db, roles_required)
     from .developer_admin import register_developer
     register_developer(app, db, now)
     from .production_controls import register_controls
@@ -289,6 +291,8 @@ def create_app(config=None):
             state = 'in_progress' if remaining else 'awaiting_inspection'
             db().execute('UPDATE tickets SET state=?,version=version+1 WHERE id=? AND tenant_id=?', (state, ticket_id, g.tenant['id']))
             event(ticket_id, 'operation_completed', f"{operation['sequence']}: {operation['name']}")
+        if request.form.get('shop_floor') == '1':
+            return redirect(url_for('shop_work', code=ticket_id))
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
     @app.post('/tickets/<ticket_id>/inspect')

@@ -161,3 +161,12 @@ The first command prompts for a confirmed password (12–256 characters). Use `-
 Developer sign-in uses durable account/source throttling and CSRF protection. Its credential store and sessions are separate from organization users. Developer access does not grant manufacturing execution or inspection, and the portal does not impersonate a tenant user. Sign out and use an individual organization account for production work. Platform writes record immutable platform history; local admins can see developer changes to their own organization in Security History. Organization deletion/suspension and browser-based developer-account provisioning are outside this slice.
 
 Back up SQLite and run `init-db` before restarting to add the separate developer accounts and platform history tables. No existing organization account is automatically promoted.
+
+
+## Tablet Shop Floor mode
+
+Operators open **Shop Floor** in the header or `/shop-floor`. The dedicated touch view uses 72-pixel controls, 80-pixel completion buttons, large text and spaced job cards. Scan a traveler using a keyboard-mode barcode scanner (Enter suffix), or tap Open job. The queue retains HOT ranking and shows active tickets, including held work; accepted/cancelled tickets remain accessible by scanning. Lists paginate in groups of 50. Tap the scan field before scanning; camera scanning is not implemented.
+
+Batch travelers show the next operation, its instructions and the job instructions. Serial-ticket covers require selecting/scanning an individual unit before completion. **Complete operation** opens a read-only confirmation page showing PN, revision, batch quantity or serial and operation. **Confirm completion** submits to the existing guarded completion endpoint and returns to the touch view. Duplicate taps are disabled while saving; server version/order checks reject repeats and stale confirmations even without JavaScript. No work is queued offline. Reopen the live traveler if a network failure leaves the save outcome unclear.
+
+Drawing/DXF buttons retain existing tenant/file audit behavior. Inspection, rework, printing and full history remain available through **Full traveler / history / rework** in the standard view. This slice does not replace sign-in with a custom PIN keypad. It requires testing with the actual tablet, gloves, stylus and scanner; larger targets do not guarantee glove detection.
