@@ -41,7 +41,23 @@ python -m flask --app productionrunner set-membership planner --tenant another-s
 python -m flask --app productionrunner set-membership planner --tenant another-shop --revoke
 ```
 
-Create `another-shop` first. Role changes and revocation take effect on the next request. CLI provisioning is trusted host administration, not a web admin privilege. Authentication remains password-based; PIN authentication is a separate pending slice.
+Create `another-shop` first. Role changes and revocation take effect on the next request. CLI provisioning is trusted host administration, not a web admin privilege. Passwords remain available; optional PIN sign-in is described below.
+
+## PIN sign-in and security history
+
+For an existing tenant-enabled database, stop the app, make a SQLite backup, and run `python -m flask --app productionrunner init-db` once before restarting. This adds credential, attempt-limit and security-history tables without changing existing accounts or workflow records. Original single-tenant databases must use `migrate-tenancy` first.
+
+A trusted local administrator can enroll or reset an individual membership's PIN:
+
+```sh
+python -m flask --app productionrunner set-pin operator --tenant melken --reason "Initial station enrollment"
+```
+
+Enter the new PIN twice at the hidden prompts. PINs contain 6–12 digits, are hashed, and are scoped to the named organization. Do not put credentials in command-line arguments or audit reasons. On the sign-in page, select **PIN** and enter organization, username and PIN. This is individual authentication; shared role PINs are not supported. Roles and independent-inspection rules are unchanged.
+
+Run `set-pin` again to reset, or add `--disable` to disable PIN sign-in without prompting for a new PIN. Both invalidate existing PIN sessions for that organization on their next request; password sessions remain valid. CLI actions record the local OS account as the administrator, the target membership, reason and UTC timestamp. Tenant admins can open **Security history** to see the latest 200 events; PIN values/hashes are never included there.
+
+Both sign-in methods share a persistent five-failure limit per organization/username in a 15-minute window. A source-address limit of 50 failures in that window also covers unknown accounts. Locked requests return HTTP 429 until the original window expires; successful authentication clears the account counter, but not the source counter. PIN reset does not clear throttling. Forwarded-IP headers are not trusted; behind a reverse proxy, requests may share the proxy's source limit. Limits are local-MVP policy choices pending requirements review.
 
 ## Try the vertical slice
 
@@ -60,7 +76,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Tests cover two-organization isolation, scoped roles, membership revocation, migration/backup/rollback, the end-to-end workflow, permissions, self-inspection denial, route order, fail/hold behavior, stale and concurrent submissions, validation rollback, CSRF, output escaping, persistence, barcode output, and audit immutability. GitHub Actions runs the suite on Python 3.12 and 3.14.
+Tests cover PIN workflow/inspection, reset/disable, hashing, concurrent and persistent throttling, security-history access, additive upgrades, two-organization isolation, scoped roles, membership revocation, migration/backup/rollback, the end-to-end workflow, permissions, self-inspection denial, route order, fail/hold behavior, stale and concurrent submissions, validation rollback, CSRF, output escaping, persistence, barcode output, and audit immutability. GitHub Actions runs the suite on Python 3.12 and 3.14.
 
 ## Documentation
 

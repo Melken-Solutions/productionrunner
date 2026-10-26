@@ -44,3 +44,20 @@ CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events BEGIN SELE
 CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT, 'Audit events are immutable'); END;
 CREATE INDEX IF NOT EXISTS tickets_tenant_created ON tickets(tenant_id, created_at);
 CREATE INDEX IF NOT EXISTS events_tenant_ticket ON events(tenant_id, ticket_id, id);
+CREATE TABLE IF NOT EXISTS pin_credentials (
+ tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL, pin_hash TEXT,
+ version INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(tenant_id,user_id),
+ FOREIGN KEY(tenant_id,user_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS login_limits (
+ key TEXT PRIMARY KEY, failures INTEGER NOT NULL, expires_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS login_limits_expiry ON login_limits(expires_at);
+CREATE TABLE IF NOT EXISTS auth_events (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+ action TEXT NOT NULL, actor TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,user_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS auth_events_tenant ON auth_events(tenant_id,id);
+CREATE TRIGGER IF NOT EXISTS auth_events_no_update BEFORE UPDATE ON auth_events BEGIN SELECT RAISE(ABORT, 'Authentication events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS auth_events_no_delete BEFORE DELETE ON auth_events BEGIN SELECT RAISE(ABORT, 'Authentication events are immutable'); END;

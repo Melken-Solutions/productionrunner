@@ -69,7 +69,7 @@ Roles combine explicitly, but independence is based on actor identity. All authe
 
 Passwords are hashed with Werkzeug; accounts are never seeded. Signed HttpOnly/SameSite session cookies expire after eight hours. Forms use CSRF tokens; templates escape user text; CSP disallows external resources and framing. The session key is generated in ignored `instance/` with restrictive file mode, or supplied through `PR_SECRET_KEY`. Set `PR_HTTPS=1` only behind HTTPS to enable Secure cookies.
 
-Local evaluation still lacks login throttling, centralized identity/MFA, credential reset/revocation, user management/auditing, session revocation, operational alerting and comprehensive backup/restore tooling. Add these before a networked pilot. No background processing, offline writes or ERP credentials are included. During connectivity loss, do not infer authorization from an old paper status.
+Local evaluation still lacks centralized identity/MFA, password reset/revocation, full user-management auditing, general session revocation, operational alerting and comprehensive backup/restore tooling. Add these before a networked pilot. No background processing, offline writes or ERP credentials are included. During connectivity loss, do not infer authorization from an old paper status.
 
 ## Sources used for implementation
 
@@ -79,10 +79,18 @@ Local evaluation still lacks login throttling, centralized identity/MFA, credent
 
 ## Tenant isolation slice
 
-Login requires organization slug, individual username and password. The signed session stores the tenant ID only after membership verification; every request reloads membership and its roles. There is no implicit/default organization and no global role fallback. Switching organizations requires signing in again, rotating the CSRF token. An original pre-migration session cannot access protected routes.
+Login requires organization slug, individual username and either a password or enrolled tenant PIN. The signed session stores the tenant ID only after membership verification; every request reloads membership and its roles. There is no implicit/default organization and no global role fallback. Switching organizations requires signing in again, rotating the CSRF token. An original pre-migration session cannot access protected routes.
 
 Tickets, operations, inspections and events carry tenant IDs. Queue, ticket, scan, traveler, barcode, production, inspection and audit reads/writes are scoped to the current membership. Known IDs from another organization return 404 to authorized action roles, just like unknown IDs. Form/query tenant fields never select ownership. Composite foreign keys link child records to their tenant-owned ticket and actors to membership in that tenant. Revocation clears membership roles rather than deleting historical identity links. SQLite foreign keys are enabled on application and provisioning connections.
 
 `migrate-tenancy` is an offline, explicit migration for the original MVP only. It makes a private, non-overwriting SQLite backup, rebuilds tables in one exclusive transaction, preserves legacy IDs/data, and checks foreign keys before commit. All old records go to the one explicitly named organization. It does not infer ownership or split previously mixed-company data. Stop writers before backup/migration and retain the prior application version for backup restoration.
 
-Application tenant isolation does not restrict a trusted database/file administrator. Existing production authentication/hosting limitations still apply. Provisioning and role-change audit events, PIN credentials, and serial execution remain pending.
+Application tenant isolation does not restrict a trusted database/file administrator. Existing production authentication/hosting limitations still apply. User-provisioning and role-change audit events, and independent serial execution remain pending.
+
+## PIN credentials and authentication audit
+
+`pin_credentials` is keyed by tenant membership and stores only a Werkzeug hash and credential version. A PIN-authenticated session records that version; reset/disable changes the version atomically with an append-only `auth_events` entry. Each request verifies the credential version and reloads the membership. Revoked memberships clear the browser session. Password sign-in remains available and is not revoked by PIN reset.
+
+`set-pin` is trusted local-host administration with hidden, confirmed input and a required reason. It does not grant any role. CLI audit attribution is the local OS account, not an asserted web administrator. Security history is tenant-admin-only and shows the latest 200 entries. Successful and failed sign-ins for active memberships are recorded without submitted credentials; unknown/revoked identities are covered by throttling but do not create membership audit rows. Throttled attempts do not create repeated audit rows.
+
+Persistent fixed windows limit failed account and source-address attempts across both credential methods, including after process restart. SQLite `BEGIN IMMEDIATE` serializes counter updates, credential verification and audit writes. This favors simple correctness for local evaluation; password hashing while holding the SQLite writer lock limits concurrency and must be revisited for production scale. Unknown identities use a dummy hash verification. Proxy headers are ignored. Shared-proxy throttling, offline attacks against short PIN hashes, shared-station session policy, recovery UX, comprehensive security monitoring and deployment hardening still require production review. PINs are not electronic-signature or regulatory compliance claims.

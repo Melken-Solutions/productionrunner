@@ -10,7 +10,6 @@ from pathlib import Path
 
 from barcode import Code128
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for, Response
-from werkzeug.security import check_password_hash
 
 
 def now():
@@ -66,6 +65,9 @@ def create_app(config=None):
             'WHERE t.id=? AND m.user_id=? AND m.roles != ? ',
             (session.get('tenant_id'), session.get('user_id'), '')).fetchone() if g.user else None
         g.roles = g.tenant['roles'].split(',') if g.tenant else []
+        if g.user and not g.tenant:
+            session.clear()
+            g.user = None
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         if request.method == 'POST' and not secrets.compare_digest(session['csrf'], request.form.get('csrf', '')):
@@ -110,22 +112,26 @@ def create_app(config=None):
 
     from .tenancy import register_commands
     register_commands(app)
+    from .pin_auth import authenticate, register_pin_auth
+    register_pin_auth(app, db, roles_required)
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         error = None
         if request.method == 'POST':
-            user = db().execute('SELECT * FROM users WHERE username=?', (request.form.get('username', ''),)).fetchone()
-            membership = db().execute(
-                'SELECT m.tenant_id FROM memberships m JOIN tenants t ON t.id=m.tenant_id '
-                'WHERE m.user_id=? AND t.slug=? AND m.roles != ?',
-                (user['id'], request.form.get('tenant', '').strip(), '')).fetchone() if user else None
-            if user and membership and check_password_hash(user['password_hash'], request.form.get('password', '')):
+            identity, status = authenticate(db(), app.config['AUTH_CLOCK'])
+            if identity:
                 session.clear()
-                session.update(user_id=user['id'], tenant_id=membership['tenant_id'], csrf=secrets.token_hex(32))
+                session.update(user_id=identity['id'], tenant_id=identity['tenant_id'],
+                               auth_method=request.form.get('method', 'password'),
+                               pin_version=identity['version'], csrf=secrets.token_hex(32))
                 session.permanent = True
                 return redirect(url_for('index'))
-            error = 'Organization, username or password is incorrect.'
+            error = 'Too many attempts. Try again in 15 minutes.' if status == 429 else 'Organization, username or credential is incorrect.'
+            response = app.make_response((render_template('login.html', error=error), status))
+            if status == 429:
+                response.headers['Retry-After'] = '900'
+            return response
         return render_template('login.html', error=error)
 
     @app.post('/logout')
