@@ -46,3 +46,7 @@ Obtain PR v1.9 source; version it in the repository; map every clause to impleme
 ## HOT scheduling — requested during local testing
 
 HOT jobs appear before normal jobs. Multiple HOT jobs use planner/admin-assigned numeric rank (1–99, smaller first), then oldest HOT designation, then stable ticket ID. Default rank 10 allows insertion of more urgent jobs ahead of existing work. Equal ranks are supported. Priority is tenant-scoped, audited and subject to optimistic ticket-version checks. It does not grant production/release authority. Automatic due-date ordering, drag-and-drop scheduling and automatic HOT clearing are outside this slice.
+
+## Part-number selection and matched drawings — requested during local testing
+
+Support PDF uploads and external HTTPS links, a tenant-specific PN/revision list and search, automatic drawing association on ticket creation, and explicit exact-revision attachment to existing unmapped tickets. Drawings are accessible from both batch and unit pages. Uploaded bytes and revision associations are immutable; an external URL can still serve changed content and is visibly identified as external. Manual entry without a library drawing remains available for compatibility. Formal document release approval is not inferred.

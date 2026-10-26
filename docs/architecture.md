@@ -108,3 +108,13 @@ Ticket state is a summary: any held unit → held; all accepted → accepted; al
 ## HOT queue priority
 
 An optional `ticket_priorities` row references the owning tenant/ticket and stores rank and original HOT time. No row means normal. Queue sorting uses rank and timestamp ahead of the existing normal newest-first order, with ticket ID as a deterministic tie breaker. Planner/admin changes use the ticket transaction/version lock and append a `priority_changed` event; setting an unchanged value is a no-op. Unit progress/version is unaffected, but batch forms opened before a priority change must reload. Serial units display their parent’s current priority. Additive schema initialization preserves existing records.
+
+## Part and drawing revisions
+
+`part_revisions` is a tenant-scoped PN/revision library containing either immutable PDF bytes plus SHA-256 or an immutable external HTTPS URL. Metadata queries exclude the BLOB. `ticket_drawings` fixes one revision reference per ticket, inherited by its units; composite ownership foreign keys prevent cross-tenant references. `part_events` records attributed revision creation. Revision rows, ticket associations and library events reject updates/deletes through database triggers. No change/replace endpoint is exposed.
+
+Ticket creation resolves a selected library ID within the current tenant and treats its PN/revision as authoritative. Manual entry matches only the exact PN/revision. Attachment and ticket audit writes share the creation transaction. Existing unmapped tickets require an explicit planner/admin matching action under the ticket version lock; adding a library entry alone does not alter an existing ticket. The read-only drawing panel never infers a new mapping.
+
+Uploads are capped at 10 MB and stored transactionally in SQLite, avoiding orphan filesystem files and including drawing bytes in existing backup procedures. The multipart endpoint allows an 11 MB request envelope; other endpoints retain 64 KB request limits. PDF responses override the general CSP with a sandbox policy, retain no-store/nosniff headers, and use a sanitized download name. Signature/extension checks are not full PDF validation or malware scanning. HTTPS links reject credentials and malformed/unsafe schemes; links are displayed with a mutability notice before navigating externally and are never server-fetched. External file content cannot be frozen by saving its URL.
+
+Formal document approval, supersession/withdrawal, revision correction, bulk import, CAD/image formats, antivirus scanning, external-system synchronization and production object storage remain out of scope. The part library is a reference catalog, not a released drawing authority.

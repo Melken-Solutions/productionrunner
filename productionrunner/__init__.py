@@ -52,12 +52,14 @@ def create_app(config=None):
                       DATABASE=str(Path(app.instance_path) / 'productionrunner.sqlite3'),
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
                       SESSION_COOKIE_SECURE=os.environ.get('PR_HTTPS') == '1',
-                      PERMANENT_SESSION_LIFETIME=timedelta(hours=8), MAX_CONTENT_LENGTH=64 * 1024)
+                      PERMANENT_SESSION_LIFETIME=timedelta(hours=8), MAX_CONTENT_LENGTH=11 * 1024 * 1024)
     if config:
         app.config.update(config)
 
     @app.before_request
     def prepare():
+        if request.endpoint != 'new_part':
+            request.max_content_length = 64 * 1024
         g.app_db = app.config['DATABASE']
         g.user = db().execute('SELECT * FROM users WHERE id=?', (session.get('user_id'),)).fetchone()
         g.tenant = db().execute(
@@ -81,7 +83,7 @@ def create_app(config=None):
 
     @app.after_request
     def headers(response):
-        response.headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self'; img-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'"
+        response.headers.setdefault('Content-Security-Policy', "default-src 'self'; style-src 'self'; img-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'")
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Cache-Control'] = 'no-store'
         return response
@@ -89,6 +91,7 @@ def create_app(config=None):
     @app.errorhandler(400)
     @app.errorhandler(403)
     @app.errorhandler(404)
+    @app.errorhandler(413)
     @app.errorhandler(409)
     def error_page(error):
         return render_template('error.html', error=error), error.code
@@ -116,6 +119,8 @@ def create_app(config=None):
     register_pin_auth(app, db, roles_required)
     from .serials import create_units, units_for, register_serials
     register_serials(app, db, roles_required, now)
+    from .parts import register_parts, find_part, matching_part, FIELDS
+    register_parts(app, db, roles_required, now, lock_ticket, event)
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -190,9 +195,14 @@ def create_app(config=None):
     @roles_required('planner')
     def new_ticket():
         if request.method == 'GET':
-            return render_template('new.html')
+            parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
+            return render_template('new.html', parts=parts)
         pn = request.form.get('pn', '').strip()
         revision = request.form.get('revision', '').strip()
+        part_id = request.form.get('part_revision_id', '')
+        part = find_part(db(), g.tenant['id'], part_id) if part_id else matching_part(db(), g.tenant['id'], pn, revision)
+        if part:
+            pn, revision = part['pn'], part['revision']
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', pn):
             abort(400, 'Enter exactly one part number (letters, numbers, dot, underscore or hyphen).')
         if not revision or len(revision) > 40:
@@ -227,6 +237,9 @@ def create_app(config=None):
                              (g.tenant['id'], ticket_id, sequence, name.strip(), detail.strip() or instructions))
             if tracking == 'serial':
                 create_units(db(), g.tenant['id'], ticket_id, serials)
+            if part:
+                db().execute('INSERT INTO ticket_drawings VALUES(?,?,?)', (g.tenant['id'], ticket_id, part['id']))
+                event(ticket_id, 'drawing_attached', f"{pn} rev {revision}; {part['id']}")
             event(ticket_id, 'ticket_created', f'{pn} rev {revision}; quantity {quantity}; {tracking}')
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 

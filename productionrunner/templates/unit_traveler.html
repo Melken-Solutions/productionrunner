@@ -5,7 +5,7 @@
 <p><strong>Organization:</strong> {{ g.tenant.name }}</p><img class="barcode" src="{{ url_for('unit_barcode', unit_id=unit.id) }}" alt="Code 128 barcode for {{ unit.id }}">
 <p>{{ unit.id }} · Parent ticket {{ ticket.id }}</p><h2>{{ ticket.pn }} · Rev {{ ticket.revision }}</h2><p><strong>Quantity: 1</strong></p>
 <p><strong>KEEP THIS TRAVELER WITH THIS INDIVIDUAL UNIT.</strong> Scan to verify serial identity and current status before working.</p>
-<h3>Work instructions / acceptance criteria</h3><p class="preserve">{{ ticket.instructions }}</p>
+{% set drawing = drawing_for(ticket) %}{% if drawing %}<p>Drawing: {{ drawing.pn }} rev {{ drawing.revision }} — open the live ticket to view its fixed reference.</p>{% endif %}<h3>Work instructions / acceptance criteria</h3><p class="preserve">{{ ticket.instructions }}</p>
 <h3>Route</h3><ol>{% for o in operations %}<li><strong>{{ o.name }}</strong> — {{ o.instructions }}</li>{% endfor %}<li>Independent inspection by someone who performed none of this unit’s production work.</li></ol>
 <p>Printed status is not release authorization. Do not attach this traveler to another unit.</p></article>
 {% endblock %}

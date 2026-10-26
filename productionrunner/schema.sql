@@ -99,3 +99,29 @@ CREATE TABLE IF NOT EXISTS ticket_priorities (
  FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id)
 );
 CREATE INDEX IF NOT EXISTS ticket_priority_order ON ticket_priorities(tenant_id,priority,hot_since);
+CREATE TABLE IF NOT EXISTS part_revisions (
+ id TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL, pn TEXT NOT NULL, revision TEXT NOT NULL,
+ description TEXT NOT NULL, drawing_pdf BLOB, drawing_url TEXT, sha256 TEXT,
+ created_by INTEGER NOT NULL, created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,pn,revision), UNIQUE(tenant_id,id),
+ CHECK((drawing_pdf IS NOT NULL AND drawing_url IS NULL AND sha256 IS NOT NULL) OR
+       (drawing_pdf IS NULL AND drawing_url IS NOT NULL AND sha256 IS NULL)),
+ FOREIGN KEY(tenant_id,created_by) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS ticket_drawings (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT PRIMARY KEY, part_revision_id TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,part_revision_id) REFERENCES part_revisions(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS part_events (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, part_revision_id TEXT NOT NULL,
+ actor_id INTEGER NOT NULL, action TEXT NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,part_revision_id) REFERENCES part_revisions(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TRIGGER IF NOT EXISTS part_revision_no_update BEFORE UPDATE ON part_revisions BEGIN SELECT RAISE(ABORT,'Part revisions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS part_revision_no_delete BEFORE DELETE ON part_revisions BEGIN SELECT RAISE(ABORT,'Part revisions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS ticket_drawing_no_update BEFORE UPDATE ON ticket_drawings BEGIN SELECT RAISE(ABORT,'Ticket drawings are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS ticket_drawing_no_delete BEFORE DELETE ON ticket_drawings BEGIN SELECT RAISE(ABORT,'Ticket drawings are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS part_event_no_update BEFORE UPDATE ON part_events BEGIN SELECT RAISE(ABORT,'Part events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS part_event_no_delete BEFORE DELETE ON part_events BEGIN SELECT RAISE(ABORT,'Part events are immutable'); END;

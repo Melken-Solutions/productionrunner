@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block content %}
+{% block content %}{% include "ticket_drawing.html" %}
 <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">← All units on ticket {{ ticket.id }}</a>
 <p class="eyebrow">UNIT / {{ unit.id }}</p><h1>Serial {{ unit.serial }}</h1>
 <p>{{ ticket.pn }} · Rev {{ ticket.revision }} · Quantity 1 · <strong>{{ unit.state|replace('_',' ') }}</strong></p>
