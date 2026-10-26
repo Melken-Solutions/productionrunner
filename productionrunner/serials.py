@@ -62,7 +62,7 @@ def register_serials(app, db, roles_required, now):
                      (summary, unit['tenant_id'], unit['ticket_id']))
 
     def context(unit):
-        ticket = db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',
+        ticket = db().execute('SELECT t.*, p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND t.id=?',
                               (unit['tenant_id'], unit['ticket_id'])).fetchone()
         operations = route(unit)
         return dict(unit=unit, ticket=ticket, operations=operations,

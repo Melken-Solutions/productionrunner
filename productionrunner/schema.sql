@@ -93,3 +93,9 @@ CREATE TABLE IF NOT EXISTS unit_event_links (
 CREATE INDEX IF NOT EXISTS unit_events_unit ON unit_event_links(tenant_id,unit_id,event_id);
 CREATE TRIGGER IF NOT EXISTS unit_links_no_update BEFORE UPDATE ON unit_event_links BEGIN SELECT RAISE(ABORT, 'Unit audit links are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS unit_links_no_delete BEFORE DELETE ON unit_event_links BEGIN SELECT RAISE(ABORT, 'Unit audit links are immutable'); END;
+CREATE TABLE IF NOT EXISTS ticket_priorities (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT PRIMARY KEY,
+ priority INTEGER NOT NULL CHECK(priority BETWEEN 1 AND 99), hot_since TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id)
+);
+CREATE INDEX IF NOT EXISTS ticket_priority_order ON ticket_priorities(tenant_id,priority,hot_since);

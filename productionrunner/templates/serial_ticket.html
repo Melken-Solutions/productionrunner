@@ -4,6 +4,7 @@
 <h1>{{ ticket.pn }} · Rev {{ ticket.revision }}</h1>
 <p>{{ ticket.quantity }} independent units · Summary: <strong>{{ ticket.state|replace('_',' ') }}</strong></p>
 <p>Each unit follows the route and receives its own inspection. A held unit must be segregated; other units can continue. The ticket is accepted only when every unit passes.</p>
+{% include "priority.html" %}
 <section class="card"><h2>Serial travelers and progress</h2>
 <p>{{ units|map(attribute='serial')|join(', ') }}</p>
 <div class="table-wrap"><table><thead><tr><th>Serial</th><th>Traveler</th><th>Status</th><th>Recorded steps</th></tr></thead><tbody>

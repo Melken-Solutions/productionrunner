@@ -97,3 +97,11 @@ Tests cover independent unit routing/inspection, parallel progress, held sibling
 - [Repository inspection and delivery record](docs/repository-inspection.md)
 
 This is a local evaluation slice. Before shop-floor rollout, reconcile the specification, validate physical printers/scanners, harden authentication and hosting, establish backup/restore, and approve the manufacturing workflow.
+
+## HOT jobs and queue priority
+
+Planners and admins can use **Mark HOT** in the work queue or ticket detail, choose a priority from 1–99 (1 highest, default 10), update that priority, or **Clear HOT**. Other roles see the flag without editing controls. HOT belongs to the whole job and appears on its individual serial-unit pages.
+
+The queue lists HOT jobs first, ordered by priority number, then the oldest HOT designation, then stable ticket ID. Equal numbers are allowed. Changing the number preserves the HOT timestamp; clearing and reapplying HOT starts a new timestamp. Normal jobs retain newest-first ordering. Changes record actor, timestamp and old/new priority in ticket audit history. Stale changes require a reload.
+
+HOT affects queue order only: it never releases held material, skips routing or permits self-inspection. Status remains visible, including for held/accepted jobs; HOT is not automatically cleared on acceptance. After backing up an existing database, run `init-db` before restarting to add the priority table without changing existing jobs.

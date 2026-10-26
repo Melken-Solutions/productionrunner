@@ -42,3 +42,7 @@ These are evidence, not a substitute for the missing versioned specification.
 ## Reconciliation checklist
 
 Obtain PR v1.9 source; version it in the repository; map every clause to implementation/test/backlog; confirm role matrix, route/inspection gates, status names, identifier format, serial semantics and equipment constraints; update this document and code together. Keep the initial implementation in a draft PR until that review is complete.
+
+## HOT scheduling — requested during local testing
+
+HOT jobs appear before normal jobs. Multiple HOT jobs use planner/admin-assigned numeric rank (1–99, smaller first), then oldest HOT designation, then stable ticket ID. Default rank 10 allows insertion of more urgent jobs ahead of existing work. Equal ranks are supported. Priority is tenant-scoped, audited and subject to optimistic ticket-version checks. It does not grant production/release authority. Automatic due-date ordering, drag-and-drop scheduling and automatic HOT clearing are outside this slice.

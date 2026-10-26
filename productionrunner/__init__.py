@@ -98,7 +98,7 @@ def create_app(config=None):
                      (g.tenant['id'], ticket_id, g.user['id'], action, detail, now()))
 
     def ticket_or_404(ticket_id):
-        ticket = db().execute('SELECT * FROM tickets WHERE id=? AND tenant_id=?', (ticket_id, g.tenant['id'])).fetchone()
+        ticket = db().execute('SELECT t.*, p.priority AS hot_priority, p.hot_since FROM tickets t LEFT JOIN ticket_priorities p ON p.ticket_id=t.id AND p.tenant_id=t.tenant_id WHERE t.id=? AND t.tenant_id=?', (ticket_id, g.tenant['id'])).fetchone()
         if not ticket:
             abort(404, 'Unknown JobRunner traveler.')
         return ticket
@@ -144,8 +144,35 @@ def create_app(config=None):
     @app.get('/')
     @roles_required()
     def index():
-        tickets = db().execute('SELECT * FROM tickets WHERE tenant_id=? ORDER BY created_at DESC', (g.tenant['id'],)).fetchall()
+        tickets = db().execute('SELECT t.*, p.priority AS hot_priority, p.hot_since FROM tickets t LEFT JOIN ticket_priorities p ON p.ticket_id=t.id AND p.tenant_id=t.tenant_id WHERE t.tenant_id=? ORDER BY (p.priority IS NULL), p.priority, p.hot_since, CASE WHEN p.priority IS NOT NULL THEN t.id END, t.created_at DESC, t.id', (g.tenant['id'],)).fetchall()
         return render_template('index.html', tickets=tickets)
+
+    @app.post('/tickets/<ticket_id>/priority')
+    @roles_required('planner', 'admin')
+    def set_priority(ticket_id):
+        with db():
+            ticket = lock_ticket(ticket_id)
+            action = request.form.get('action')
+            if action not in {'hot', 'normal'}:
+                abort(400, 'Choose HOT or normal priority.')
+            priority = None
+            if action == 'hot':
+                raw = request.form.get('priority', '10')
+                if not re.fullmatch(r'[0-9]{1,2}', raw) or not 1 <= int(raw) <= 99:
+                    abort(400, 'HOT priority must be a number from 1 to 99 (1 is highest).')
+                priority = int(raw)
+            if priority != ticket['hot_priority']:
+                if priority is None:
+                    db().execute('DELETE FROM ticket_priorities WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket_id))
+                else:
+                    db().execute('INSERT INTO ticket_priorities(tenant_id,ticket_id,priority,hot_since) VALUES(?,?,?,?) '
+                                 'ON CONFLICT(ticket_id) DO UPDATE SET priority=excluded.priority',
+                                 (g.tenant['id'], ticket_id, priority, now()))
+                db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?', (g.tenant['id'], ticket_id))
+                before = f"HOT {ticket['hot_priority']}" if ticket['hot_priority'] is not None else 'Normal'
+                after = f'HOT {priority}' if priority is not None else 'Normal'
+                event(ticket_id, 'priority_changed', f'{before} → {after}')
+        return redirect(url_for('index'))
 
     @app.get('/scan')
     @roles_required()
