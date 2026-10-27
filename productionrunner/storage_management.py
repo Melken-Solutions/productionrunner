@@ -39,6 +39,7 @@ def inventory(conn, tenant, settings, clock):
     unsafe_units = {r[0] for r in conn.execute("SELECT DISTINCT ticket_id FROM serial_units WHERE tenant_id=? AND state!='accepted'", (tenant,))}
     keeps = {(r['part_revision_id'],r['kind']):dict(r) for r in conn.execute('SELECT * FROM storage_file_controls WHERE tenant_id=?', (tenant,))}
     preparing_parts = {r[0] for r in conn.execute("SELECT p.id FROM part_revisions p JOIN intake_requests i ON i.tenant_id=p.tenant_id AND i.pn=p.pn AND i.revision=p.revision WHERE p.tenant_id=? AND i.status IN ('preparing','approved')", (tenant,))}
+    return_tickets = {r[0] for r in conn.execute('SELECT DISTINCT ticket_id FROM customer_returns WHERE tenant_id=?',(tenant,))}
     duplicates = defaultdict(list)
     for f in files:
         keep = keeps.get((f['id'],f['kind']), {})
@@ -50,6 +51,8 @@ def inventory(conn, tenant, settings, clock):
             f['status']='Keep permanently'; continue
         if any(t['state']=='held' or (not t['cancelled_at'] and (t['state']!='accepted' or t['id'] in unsafe_units or departures.get(t['id'],0)!=t['quantity'])) for t in linked):
             f['status']='Protected by active / held work'; continue
+        if any(t['id'] in return_tickets for t in linked):
+            f['status']='Protected by returned material'; continue
         if f['id'] in preparing_parts:
             f['status']='Protected by open manufacturing request'; continue
         days = settings[f['kind']+'_days']

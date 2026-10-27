@@ -358,3 +358,33 @@ CREATE TRIGGER IF NOT EXISTS fulfillment_reversals_no_update BEFORE UPDATE ON fu
 CREATE TRIGGER IF NOT EXISTS fulfillment_reversals_no_delete BEFORE DELETE ON fulfillment_reversals BEGIN SELECT RAISE(ABORT,'Correction evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS fulfillment_unit_entries_no_update BEFORE UPDATE ON fulfillment_unit_entries BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS fulfillment_unit_entries_no_delete BEFORE DELETE ON fulfillment_unit_entries BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS customer_returns (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,departure_id INTEGER NOT NULL,
+ kind TEXT NOT NULL DEFAULT 'depart' CHECK(kind='depart'),quantity INTEGER NOT NULL CHECK(quantity>0),
+ reference TEXT NOT NULL,reason TEXT NOT NULL,location TEXT NOT NULL,serials TEXT NOT NULL,
+ actor_id INTEGER NOT NULL,created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,departure_id,kind) REFERENCES fulfillment_records(tenant_id,ticket_id,id,kind),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS return_departure ON customer_returns(tenant_id,departure_id);
+CREATE TABLE IF NOT EXISTS customer_return_units (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,return_id INTEGER NOT NULL,unit_id TEXT NOT NULL,
+ PRIMARY KEY(tenant_id,unit_id),
+ FOREIGN KEY(tenant_id,ticket_id,return_id) REFERENCES customer_returns(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id)
+);
+CREATE TABLE IF NOT EXISTS customer_return_reviews (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,return_id INTEGER PRIMARY KEY,
+ decision TEXT NOT NULL CHECK(decision IN ('repair_required','replacement_required','scrap_authorized','further_review')),
+ notes TEXT NOT NULL,actor_id INTEGER NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,return_id) REFERENCES customer_returns(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TRIGGER IF NOT EXISTS customer_returns_no_update BEFORE UPDATE ON customer_returns BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS customer_returns_no_delete BEFORE DELETE ON customer_returns BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS customer_return_units_no_update BEFORE UPDATE ON customer_return_units BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS customer_return_units_no_delete BEFORE DELETE ON customer_return_units BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS customer_return_reviews_no_update BEFORE UPDATE ON customer_return_reviews BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS customer_return_reviews_no_delete BEFORE DELETE ON customer_return_reviews BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;

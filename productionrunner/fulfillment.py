@@ -56,7 +56,9 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
         history = db().execute('SELECT f.*,u.username,r.reason AS reversal_reason,r.created_at AS reversed_at,ru.username AS reversed_by FROM fulfillment_records f JOIN users u ON u.id=f.actor_id LEFT JOIN fulfillment_reversals r ON r.record_id=f.id AND r.tenant_id=f.tenant_id LEFT JOIN users ru ON ru.id=r.actor_id WHERE f.tenant_id=? AND f.ticket_id=? ORDER BY f.id', (g.tenant['id'], ticket_id)).fetchall()
         units = db().execute("SELECT s.*,EXISTS(SELECT 1 FROM fulfillment_active_units f WHERE f.tenant_id=s.tenant_id AND f.unit_id=s.id AND f.kind='pack') AS packed,EXISTS(SELECT 1 FROM fulfillment_active_units f WHERE f.tenant_id=s.tenant_id AND f.unit_id=s.id AND f.kind='depart') AS departed FROM serial_units s WHERE s.tenant_id=? AND s.ticket_id=? ORDER BY s.serial", (g.tenant['id'], ticket_id)).fetchall()
         latest = next((h['id'] for h in reversed(history) if not h['reversed_at']), None)
-        return render_template('delivery.html', ticket=ticket, delivery=delivery, checks=checks, history=history, units=units, reversible_id=latest, started={h['kind'] for h in history})
+        if latest and db().execute('SELECT 1 FROM customer_returns WHERE tenant_id=? AND departure_id=?',(g.tenant['id'],latest)).fetchone():
+            latest = None
+        return render_template('delivery.html', ticket=ticket, delivery=delivery, checks=checks, history=history, units=units, reversible_id=latest, started={h['kind'] for h in history}, return_quantity=db().execute('SELECT COALESCE(SUM(quantity),0) FROM customer_returns WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id)).fetchone()[0])
 
     @app.post('/tickets/<ticket_id>/delivery/checks')
     @roles_required('planner', 'admin')
@@ -110,6 +112,8 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             latest = db().execute('SELECT id FROM fulfillment_active_records WHERE tenant_id=? AND ticket_id=? ORDER BY id DESC LIMIT 1', (g.tenant['id'], ticket_id)).fetchone()
             if not latest or latest['id'] != record_id:
                 abort(409, 'Reverse the newest unreversed movement first. This entry is already reversed or has later activity.')
+            if db().execute('SELECT 1 FROM customer_returns WHERE tenant_id=? AND departure_id=?', (g.tenant['id'],record_id)).fetchone():
+                abort(409, 'This departure has customer returns and cannot be reversed.')
             state = progress(db(), g.tenant['id'], ticket)
             linked = db().execute('SELECT unit_id FROM fulfillment_active_units WHERE tenant_id=? AND record_id=?', (g.tenant['id'], record_id)).fetchall()
             db().execute('INSERT INTO fulfillment_reversals VALUES(?,?,?,?,?,?,?)', (g.tenant['id'], ticket_id, record_id, record['kind'], g.user['id'], reason, now()))
