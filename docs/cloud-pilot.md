@@ -20,15 +20,28 @@ Implemented hosting foundations:
 
 Customer data isolation, role permissions, independent inspection and audit guards already have local regression tests. This is not a claim that the application is ready for unrestricted public registration or production SaaS use.
 
-## Proposed initial hosting approach (not purchased or selected)
+## Selected architecture and development sequence
 
-Use a managed web service with HTTPS ingress, persistent storage, secret configuration, logs, health monitoring and controlled deployment. Keep staging separate from the customer service. Begin with one application instance and a small invited pilot; this matches the present SQLite implementation and avoids a database rewrite in the same step as the first hosting trial.
+Confirmed direction: **Render hosts the Python application; Supabase provides managed PostgreSQL and private PDF/DXF object storage.** Remote work for planners and admins is a core product requirement and a pilot acceptance gate. Customer shops access the same HTTPS application from station PCs and TV displays. A local server remains an alternative deployment option, not the default roadmap. Local/cloud synchronization is out of scope for the first pilot.
 
-Melken has now selected Render for application hosting and has created an account; Supabase is the intended database/file platform. No ProductionRunner service or project has been deployed by this repository change. The following disk constraints describe the earlier SQLite pilot option; the Supabase migration remains required for the intended architecture. Its persistent disks are attached to paid services, are available at runtime rather than build/pre-deploy time, restrict a service to one instance and require brief downtime during deployment. Ephemeral/free filesystem storage is unsuitable for this database. Other providers need equivalent explicit persistence checks. See [Render persistent disk documentation](https://render.com/docs/disks).
+This is an architecture decision, not an implemented migration. The current application still uses SQLite and database-contained document bytes. Do not deploy it with ephemeral storage or assume that configuring a Supabase URL makes its SQL, transactions, file handling or authentication compatible. Supabase Auth adoption is a separate integration decision; preserve operator PIN semantics and independent-inspection identities while designing stronger remote authentication.
 
-The longer-term shared subscription service needs a separate decision about managed database and document storage, availability targets, tenant quotas, retention and scaling. SQLite on one volume is an initial pilot constraint, not the final scaling design. Do not place a shared SQLite file on network storage or scale replicas against it. No Postgres/object-storage migration has been implemented by this change.
+Development sequence:
 
-## Pilot deployment procedure
+1. Confirm the intended Melken Render workspace, a dedicated ProductionRunner Supabase development project, compatible regions, budget and domain. Keep other Melken projects unchanged.
+2. Implement and test PostgreSQL migrations and database access, preserving tenant ownership, transactional audit history, version checks, immutable records and concurrency behavior. Rehearse migration using synthetic data before any customer-data transfer.
+3. Move drawing bytes to private object storage with authorized upload/download paths, immutable revision references and checksums. Design recovery for failures between database and object-storage writes. Preserve bulk-import preview, duplicate/conflict rules and retention protections. Implement retry/resume and progress feedback for remote uploads; current upload limits remain until deliberately changed and tested.
+4. Complete remote authentication, account recovery, trusted proxy handling, and the two-organization isolation checks below. Require MFA for remote planner/admin and Melken developer access; station PIN access needs its own controlled policy.
+5. Deploy reviewed code to staging with synthetic data, managed secrets, HTTPS, health checks and automatic deployment from the development branch disabled. Verify both database and document backup/restore independently; database backup alone must not be assumed to recover object bytes.
+6. Run the remote-planning acceptance scenario, then qualify the invited customer pilot and shop hardware. Do not merge the draft PR without review.
+
+### Remote-planning acceptance scenario
+
+A planner on a separate internet connection signs in securely, imports a PDF/DXF library, creates and routes tickets, assigns stations/operators and changes HOT priorities while shop operators execute work. An admin remotely manages organization users and settings. Verify concurrent edits cannot overwrite one another, completed production evidence remains immutable, the actual covering operator is recorded, and inspection remains independent. Planners must see current progress and holds with clear freshness information. Upload failures must leave a recoverable, truthful outcome; interrupted connections must never imply unsaved work was accepted. Test tenant isolation and session expiry across these workflows. Remote browser printing targets the remote user's printer; remote submission to a shop printer is a separate, unimplemented capability.
+
+## Legacy SQLite hosting trial procedure (not the selected Supabase deployment)
+
+The steps below apply only to the earlier single-instance SQLite hosting trial. Retain them for reference; do not execute them as the Render/Supabase launch procedure. The selected deployment runbook must be completed with the migration implementation.
 
 1. Select hosting provider/region and the business domain with Melken. Record budget, customer data location requirements, support owner and the first customer's organization details. No account purchase, external upload of existing shop records or DNS change is authorized just by this document.
 2. Create a private staging environment first. Use synthetic records only until access and recovery checks pass. Connect a reviewed commit; leave automatic deployment from a moving development branch disabled. Do not merge the draft PR as part of setup.
@@ -45,7 +58,7 @@ The longer-term shared subscription service needs a separate decision about mana
 
 | Area | Required work / acceptance |
 |---|---|
-| Remote authentication | MFA for Melken developer and customer-admin access; secure account recovery and credential lifecycle. Native MFA is not implemented. A managed identity/access gateway can be evaluated, but its policies must protect all relevant routes without breaking display sessions. |
+| Remote authentication | MFA for Melken developer and remote planner/customer-admin access; secure account recovery and credential lifecycle. Native MFA is not implemented. A managed identity/access gateway can be evaluated, but its policies must protect all relevant routes without breaking display sessions. |
 | Operator PINs | Do not treat existing short PIN login as Internet-ready identity assurance. Decide whether to restrict PIN access to managed station access or require stronger remote authentication. Apply the policy on the server/gateway, not merely by hiding controls. |
 | Proxy trust and throttling | Current application ignores forwarded IPs; a proxy can make customers share the source-failure bucket. Design/test a provider-specific trusted proxy chain and abuse controls before public use; never trust arbitrary forwarded headers. |
 | Customer isolation | Test two synthetic customers across every read/write/download/admin path and authentication transitions; verify that developer access does not grant manufacturing execution. |
