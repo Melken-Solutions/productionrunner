@@ -4,6 +4,12 @@ A runnable, **provisional** manufacturing workflow MVP: one part number per tick
 
 **Specification status:** PR v1.9 was referenced but its contents were unavailable through the linked chat. This implementation is based on the current request and the visible traveler/hybrid-tracking decisions. It is not a claim of PR v1.9 compliance. See [requirements and open decisions](docs/requirements.md) before approving the draft PR.
 
+## Initial shop installation
+
+The agreed pilot layout is **Laser 1, Laser 2 and Packing**, each with a mini PC driving a station TV and a separate operator desk monitor, plus a fourth mini PC/TV for the whole-shop queue. Shared equipment is one server and one network printer; an existing office workstation handles planner/admin uploads and scheduling. **No tablets are planned.** Operators print travelers/drawings and transfer downloaded DXFs to the lasers by USB. TV and operator sessions use separate browser profiles.
+
+See [the installation plan and pilot acceptance procedure](docs/hardware.md) for equipment totals, document/revision handling, network and backup needs, and deployment work still outstanding.
+
 ## Run locally
 
 Requires Python 3.12 or newer. No external database or cloud account is needed.
