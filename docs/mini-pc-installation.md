@@ -1,5 +1,7 @@
 # Mini PC installation — Windows shop workstations
 
+**Cloud direction update:** Melken is the software provider and customer shops subscribe. See [cloud pilot](cloud-pilot.md). A hosted shop needs no dedicated local app server. Local-server instructions below are an alternative; workstation instructions apply to either hosted or local HTTPS addresses. Existing `melken` development data is not automatically a customer.
+
 Status: installation runbook for the agreed pilot, not a record of hardware already installed. Windows 11 is the proposed client baseline; validate the exact PC, display, printer and scanner combination on one laser station before repeating it. See [hardware layout](hardware.md) and [server installation](server-installation.md).
 
 ## Equipment and software inventory

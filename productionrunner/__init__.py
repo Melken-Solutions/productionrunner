@@ -38,10 +38,18 @@ def roles_required(*roles):
 
 
 def create_app(config=None):
-    app = Flask(__name__, instance_relative_config=True)
+    data_dir = os.environ.get('PR_DATA_DIR')
+    if data_dir and not Path(data_dir).is_absolute():
+        raise ValueError('PR_DATA_DIR must be an absolute path.')
+    app = Flask(__name__, instance_relative_config=True, instance_path=data_dir or None)
+    # Validate production prerequisites before creating any persistent state.
+    from .hosting import configure, readiness, register_hosting
+    if config:
+        app.config.update(config)
+    configure(app)
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     secret_path = Path(app.instance_path) / 'session-secret'
-    if not secret_path.exists():
+    if not os.environ.get('PR_SECRET_KEY') and not secret_path.exists():
         try:
             fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, 'w') as f:
@@ -56,8 +64,16 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
+    register_hosting(app)
+
     @app.before_request
     def prepare():
+        # A rejected Host must not render tenant templates or touch the database.
+        from werkzeug.exceptions import SecurityError
+        if isinstance(request.routing_exception, SecurityError):
+            return 'Invalid host.', 400
+        if request.endpoint == 'hosting_readiness':
+            return readiness(app)
         if request.endpoint == 'admin_branding':
             request.max_content_length = 4 * 1024 * 1024
         elif request.endpoint == 'upload_dxf':

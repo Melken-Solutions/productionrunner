@@ -1,5 +1,7 @@
 # Hardware and station architecture — initial installation plan
 
+**Cloud direction update:** Melken is the software provider and customer shops subscribe. See [cloud pilot](cloud-pilot.md). A hosted shop needs no dedicated local app server. Local-server instructions below are an alternative; workstation instructions apply to either hosted or local HTTPS addresses. Existing `melken` development data is not automatically a customer.
+
 The equipment layout below records the installation decisions agreed on 2026-10-26. It is not a vendor quote or approval of specific models. Final hardware, environmental suitability, hosting configuration and physical acceptance remain to be verified. PR v1.9 reconciliation remains open.
 
 Installation procedures: [server](server-installation.md) and [Windows mini PCs](mini-pc-installation.md). The server operating system remains undecided; the server guide provides Windows and Ubuntu alternatives.

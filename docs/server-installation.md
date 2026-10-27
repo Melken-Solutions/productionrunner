@@ -1,5 +1,7 @@
 # ProductionRunner server installation and recovery
 
+**Cloud direction update:** Melken is the software provider and customer shops subscribe. See [cloud pilot](cloud-pilot.md). A hosted shop needs no dedicated local app server. Local-server instructions below are an alternative; workstation instructions apply to either hosted or local HTTPS addresses. Existing `melken` development data is not automatically a customer.
+
 Status: planning/installation runbook. **Server OS is not yet selected.** Windows and Ubuntu paths below are alternatives, not instructions to install both. Windows 11 mini PC instructions are in [mini-pc-installation.md](mini-pc-installation.md); equipment counts and the physical pilot are in [hardware.md](hardware.md).
 
 The app is currently a locally tested MVP on a draft branch. The commands/configuration below have been checked against the app's factory and CLI, but a Windows/Ubuntu shop server, TLS service, startup recovery and real network load have not yet been qualified. Complete the acceptance checks before authorizing shop use. Do not merge the draft PR merely to deploy a test.
@@ -108,7 +110,7 @@ The local admin can create each person's planner/operator/inspector roles in Use
 
 If developer administration is required, a trusted host administrator separately runs `python -m flask --app productionrunner add-developer NAME --reason 'Initial platform provisioning'` using the venv Python. This creates a separate platform identity; local organization admins cannot grant it.
 
-The app creates `instance/session-secret`. Preserve its permissions and persistence. The examples use this file and leave `PR_SECRET_KEY` unset; an environment override is optional and must be managed consistently for service, backup and restore. The app still creates the file even with an override. Do not regenerate keys at each boot. `PR_HTTPS=1` must be present in the serving process behind HTTPS; it enables Secure cookies. Never use Flask debug mode in this configuration.
+The app creates `instance/session-secret`. Preserve its permissions and persistence. The examples use this file and leave `PR_SECRET_KEY` unset; an environment override is optional and must be managed consistently for service, backup and restore. When an environment key is supplied, current versions do not generate an unused fallback secret file. Do not regenerate keys at each boot. `PR_HTTPS=1` must be present in the serving process behind HTTPS; it enables Secure cookies. Never use Flask debug mode in this configuration.
 
 ## 5. Start the application on loopback
 

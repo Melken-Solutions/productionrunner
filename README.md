@@ -4,15 +4,19 @@ A runnable, **provisional** manufacturing workflow MVP: one part number per tick
 
 **Specification status:** PR v1.9 was referenced but its contents were unavailable through the linked chat. This implementation is based on the current request and the visible traveler/hybrid-tracking decisions. It is not a claim of PR v1.9 compliance. See [requirements and open decisions](docs/requirements.md) before approving the draft PR.
 
+## Cloud subscription direction
+
+Melken Solutions is the developer/service provider; subscribing shops are customer organizations. Cloud hosting is the primary direction. See the [cloud pilot plan and implemented hosting foundations](docs/cloud-pilot.md). A hosted customer needs no local application server; the local server runbook remains an alternative. No cloud service has been purchased or deployed, and native MFA/billing are not implemented.
+
 ## Initial shop installation
 
-The agreed pilot layout is **Laser 1, Laser 2 and Packing**, each with a mini PC driving a station TV and a separate operator desk monitor, plus a fourth mini PC/TV for the whole-shop queue. Shared equipment is one server and one network printer; an existing office workstation handles planner/admin uploads and scheduling. **No tablets are planned.** Operators print travelers/drawings and transfer downloaded DXFs to the lasers by USB. TV and operator sessions use separate browser profiles.
+The agreed pilot layout is **Laser 1, Laser 2 and Packing**, each with a mini PC driving a station TV and a separate operator desk monitor, plus a fourth mini PC/TV for the whole-shop queue. Shared shop equipment is one network printer; the application server is hosted centrally in the preferred cloud arrangement; an existing office workstation handles planner/admin uploads and scheduling. **No tablets are planned.** Operators print travelers/drawings and transfer downloaded DXFs to the lasers by USB. TV and operator sessions use separate browser profiles.
 
 See [the installation plan and pilot acceptance procedure](docs/hardware.md) for equipment totals, document/revision handling, network and backup needs, and deployment work still outstanding.
 
 ## Shop installation guides
 
-- [Server installation, HTTPS, startup, backups and recovery](docs/server-installation.md) — Windows and Ubuntu alternatives; server OS is not yet selected.
+- [Server installation, HTTPS, startup, backups and recovery](docs/server-installation.md) — alternative on-premises Windows/Ubuntu deployment, not required for cloud customers.
 - [Windows mini PC installation](docs/mini-pc-installation.md) — extended displays, separate browser profiles, printing, USB transfer and shift-start checks.
 
 These are deployment runbooks, not a claim that a shop server or unattended kiosk has been installed or qualified.
@@ -26,14 +30,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m flask --app productionrunner init-db
-python -m flask --app productionrunner add-tenant melken --name "Melken Solutions"
-python -m flask --app productionrunner add-user planner --tenant melken --roles planner
-python -m flask --app productionrunner add-user operator --tenant melken --roles operator
-python -m flask --app productionrunner add-user inspector --tenant melken --roles inspector
+python -m flask --app productionrunner add-tenant demo-shop --name "Demo Customer Shop"
+python -m flask --app productionrunner add-user planner --tenant demo-shop --roles planner
+python -m flask --app productionrunner add-user operator --tenant demo-shop --roles operator
+python -m flask --app productionrunner add-user inspector --tenant demo-shop --roles inspector
 python -m flask --app productionrunner run --host 127.0.0.1 --port 5000
 ```
 
-Each `add-user` command prompts for a password (12+ characters). There are no seeded accounts or default passwords. Open <http://127.0.0.1:5000>. Enter organization `melken` when signing in. Use separate browser profiles or sign out between roles or organizations. `init-db` preserves existing records.
+Each `add-user` command prompts for a password (12+ characters). There are no seeded accounts or default passwords. Open <http://127.0.0.1:5000>. Enter organization `demo-shop` when signing in. Use separate browser profiles or sign out between roles or organizations. `init-db` preserves existing records.
 
 SQLite data and the generated session signing secret live in ignored `instance/`. Keep both private. The built-in server is for local evaluation; do not expose it as a production service.
 
@@ -42,7 +46,7 @@ SQLite data and the generated session signing secret live in ignored `instance/`
 Stop the application and all writers. Keep the database and session secret private. `init-db` refuses to silently upgrade the original schema. Explicitly assign **all existing users and records** to the organization that owns them:
 
 ```sh
-python -m flask --app productionrunner migrate-tenancy --tenant melken --name "Melken Solutions" --backup instance/pre-tenancy.sqlite3
+python -m flask --app productionrunner migrate-tenancy --tenant demo-shop --name "Melken Solutions" --backup instance/pre-tenancy.sqlite3
 ```
 
 The backup path must not exist. Migration preserves IDs, credentials, workflow state and audit entries, checks ownership constraints, and rolls back on failure. Keep the backup secure; it contains password hashes and manufacturing data. Existing sessions must sign in again with an organization. To restore, stop the app and replace its database with the backup, then run the previous application version; do not run the new app against the legacy schema.
@@ -63,7 +67,7 @@ For an existing tenant-enabled database, stop the app, make a SQLite backup, and
 A trusted local administrator can enroll or reset an individual membership's PIN:
 
 ```sh
-python -m flask --app productionrunner set-pin operator --tenant melken --reason "Initial station enrollment"
+python -m flask --app productionrunner set-pin operator --tenant demo-shop --reason "Initial station enrollment"
 ```
 
 Enter the new PIN twice at the hidden prompts. PINs contain 6–12 digits, are hashed, and are scoped to the named organization. Do not put credentials in command-line arguments or audit reasons. On the sign-in page, select **PIN** and enter organization, username and PIN. This is individual authentication; shared role PINs are not supported. Roles and independent-inspection rules are unchanged.
