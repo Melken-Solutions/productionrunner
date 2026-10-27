@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% block content %}
+<p><a href="{{ url_for('parts_library') }}">← Parts &amp; drawings</a></p><h1>Import parts &amp; drawings</h1>
+{% if result %}
+<section class="card" role="status"><h2>Import complete</h2><p>{{ result.created }} revisions created · {{ result.dxf_added }} DXFs added · {{ result.skipped }} rows skipped as identical.</p><p>File bytes and import history were saved. Repeating confirmation will not duplicate records.</p></section>
+{% elif token %}
+<section class="card"><h2>Review before importing</h2><p>No catalog files have been changed. Preview expires in one hour. Confirm saves this entire batch together; a library conflict saves nothing.</p><p>{% if keep %}Newly added files will be kept permanently.{% else %}Newly added files will follow organization retention defaults.{% endif %} Existing files and their retention settings remain unchanged.</p>
+<form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button name="action" value="confirm">Confirm import</button> <button class="secondary" name="action" value="cancel">Cancel preview</button></form></section>
+{% else %}
+{% if blocked %}<p class="alert" role="alert">Import blocked. Correct the rows below and upload again. Nothing was imported or staged.</p>{% endif %}
+<p>Upload a UTF-8 CSV and its PDF/DXF files. Filenames must match exactly. New revisions require a PDF; a DXF is optional. Existing revisions may receive their first DXF. Identical files are skipped; differing files or descriptions are never overwritten.</p>
+<p><a class="button secondary" href="{{ url_for('import_template') }}">Download CSV template</a></p>
+<form method="post" enctype="multipart/form-data" class="card stack"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+<label>CSV mapping<input type="file" name="mapping" accept=".csv" required></label>
+<label>PDF and DXF files (select multiple)<input type="file" name="files" accept=".pdf,.dxf" multiple required></label>
+<label><input type="checkbox" name="keep" value="1"> Keep newly imported files permanently (reusable master drawings)</label>
+<p>Otherwise organization retention defaults apply. Limits: 200 CSV rows, 50 MB total file content, 10 MB per PDF and 20 MB per DXF. Split larger libraries into batches. Previewing another batch replaces your pending preview for this organization.</p><button>Preview import</button></form>
+{% endif %}
+{% if report %}<div class="table-wrap"><table><thead><tr><th>CSV line</th><th>PN / revision</th><th>Files</th><th>{{ 'Outcome' if result else 'Proposed action' }}</th></tr></thead><tbody>{% for row in report %}<tr><td>{{ row.line }}</td><td>{{ row.pn }} · {{ row.revision }}</td><td>{{ row.drawing_file }}<br>{{ row.dxf_file }}</td><td>{{ row.status }}{% for error in row.errors %}<p>{{ error }}</p>{% endfor %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% endblock %}

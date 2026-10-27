@@ -76,6 +76,8 @@ def create_app(config=None):
             return readiness(app)
         if request.endpoint == 'admin_branding':
             request.max_content_length = 4 * 1024 * 1024
+        elif request.endpoint == 'import_parts':
+            request.max_content_length = 51 * 1024 * 1024
         elif request.endpoint == 'upload_dxf':
             request.max_content_length = 21 * 1024 * 1024
         elif request.endpoint != 'new_part':
@@ -162,6 +164,8 @@ def create_app(config=None):
     register_serials(app, db, roles_required, now)
     from .parts import register_parts, find_part, matching_part, FIELDS
     register_parts(app, db, roles_required, now, lock_ticket, event)
+    from .part_import import register_import
+    register_import(app, db, roles_required, now)
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():

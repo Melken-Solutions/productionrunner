@@ -247,3 +247,10 @@ CREATE TABLE IF NOT EXISTS storage_file_controls (
  PRIMARY KEY(tenant_id,part_revision_id,kind),
  FOREIGN KEY(tenant_id,part_revision_id) REFERENCES part_revisions(tenant_id,id)
 );
+
+CREATE TABLE IF NOT EXISTS part_imports (
+ token TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL, actor_id INTEGER NOT NULL,
+ expires_at REAL NOT NULL, payload TEXT, report TEXT NOT NULL, result TEXT,
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS part_import_owner ON part_imports(tenant_id,actor_id);
