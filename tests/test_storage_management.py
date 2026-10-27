@@ -55,6 +55,11 @@ def test_accepted_closure_grace_boundaries_and_missing_evidence(app):
  c,part=setup(app);sign_in(c,'planner');ticket=create_ticket(c).location
  complete_route(app,c,ticket);sign_in(c,'inspector')
  assert post(c,ticket+'/inspect',version='3',result='pass',notes='Checked').status_code==302
+ assert all(f['status']=='Protected by active / held work' for f in report(app)['files'])
+ from test_fulfillment import move
+ sign_in(c,'operator');tid=ticket.split('/')[-1]
+ assert move(app,c,tid,'pack',quantity='2').status_code==302
+ assert move(app,c,tid,'depart',quantity='2').status_code==302
  files=report(app)['files']; assert all(f['status']=='Eligible in preview' for f in files)
  assert all(f['references']==1 for f in files)
  due=files[0]['due']
@@ -68,7 +73,7 @@ def test_accepted_closure_grace_boundaries_and_missing_evidence(app):
  # No acceptance evidence must not be treated as old closed work.
  c2=app.test_client();sign_in(c2,'planner');new=create_ticket(c2).location.split('/')[-1]
  with sqlite3.connect(app.config['DATABASE']) as conn:conn.execute("UPDATE tickets SET state='accepted' WHERE id=?",(new,))
- assert all(f['status']=='Protected: closure/date needs review' for f in report(app)['files'])
+ assert all(f['status']=='Protected by active / held work' for f in report(app)['files'])
 
 
 def test_cancelled_jobs_age_from_cancellation(app):

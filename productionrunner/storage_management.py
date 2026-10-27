@@ -27,11 +27,15 @@ def inventory(conn, tenant, settings, clock):
     # Read lengths/hashes, never load document bytes just to render the dashboard.
     files = [dict(r) for r in conn.execute("SELECT p.id,p.pn,p.revision,'pdf' AS kind,p.created_at,p.sha256,length(p.drawing_pdf) AS size FROM part_revisions p WHERE p.tenant_id=? AND p.drawing_pdf IS NOT NULL UNION ALL SELECT p.id,p.pn,p.revision,'dxf',d.uploaded_at,d.sha256,length(d.content) FROM part_dxf d JOIN part_revisions p ON p.tenant_id=d.tenant_id AND p.id=d.part_revision_id WHERE d.tenant_id=?", (tenant, tenant))]
     references = defaultdict(list)
-    for row in conn.execute('SELECT p.id AS part_id,t.id,t.state,c.created_at AS cancelled_at FROM part_revisions p JOIN tickets t ON t.tenant_id=p.tenant_id AND (EXISTS(SELECT 1 FROM ticket_drawings m WHERE m.tenant_id=t.tenant_id AND m.ticket_id=t.id AND m.part_revision_id=p.id) OR (t.pn=p.pn AND t.revision=p.revision)) LEFT JOIN ticket_cancellations c ON c.tenant_id=t.tenant_id AND c.ticket_id=t.id WHERE p.tenant_id=?', (tenant,)):
+    for row in conn.execute('SELECT p.id AS part_id,t.id,t.quantity,t.state,c.created_at AS cancelled_at FROM part_revisions p JOIN tickets t ON t.tenant_id=p.tenant_id AND (EXISTS(SELECT 1 FROM ticket_drawings m WHERE m.tenant_id=t.tenant_id AND m.ticket_id=t.id AND m.part_revision_id=p.id) OR (t.pn=p.pn AND t.revision=p.revision)) LEFT JOIN ticket_cancellations c ON c.tenant_id=t.tenant_id AND c.ticket_id=t.id WHERE p.tenant_id=?', (tenant,)):
         references[row['part_id']].append(row)
     closures = defaultdict(list)
     for r in conn.execute("SELECT ticket_id,created_at FROM events WHERE tenant_id=? AND action IN ('inspection_pass','unit_inspection_pass','rework_inspection_pass')", (tenant,)):
         closures[r['ticket_id']].append(instant(r['created_at']))
+    departures = {r['ticket_id']:r['quantity'] for r in conn.execute("SELECT ticket_id,SUM(quantity) AS quantity FROM fulfillment_records WHERE tenant_id=? AND kind='depart' GROUP BY ticket_id", (tenant,))}
+    delivery_dates = defaultdict(list)
+    for r in conn.execute("SELECT ticket_id,created_at FROM events WHERE tenant_id=? AND action='delivery_closed'", (tenant,)):
+        delivery_dates[r['ticket_id']].append(instant(r['created_at']))
     unsafe_units = {r[0] for r in conn.execute("SELECT DISTINCT ticket_id FROM serial_units WHERE tenant_id=? AND state!='accepted'", (tenant,))}
     keeps = {(r['part_revision_id'],r['kind']):dict(r) for r in conn.execute('SELECT * FROM storage_file_controls WHERE tenant_id=?', (tenant,))}
     duplicates = defaultdict(list)
@@ -43,14 +47,17 @@ def inventory(conn, tenant, settings, clock):
         duplicates[(f['kind'], f['sha256'], f['size'])].append(f)
         if f['keep']:
             f['status']='Keep permanently'; continue
-        if any(t['state']=='held' or (not t['cancelled_at'] and (t['state']!='accepted' or t['id'] in unsafe_units)) for t in linked):
+        if any(t['state']=='held' or (not t['cancelled_at'] and (t['state']!='accepted' or t['id'] in unsafe_units or departures.get(t['id'],0)!=t['quantity'])) for t in linked):
             f['status']='Protected by active / held work'; continue
         days = settings[f['kind']+'_days']
         if days is None:
             f['status']='Keep indefinitely'; continue
         anchors = [instant(f['created_at'])]
         for t in linked:
-            dates = [instant(t['cancelled_at'])] if t['cancelled_at'] else closures[t['id']]
+            if t['cancelled_at']:
+                dates = [instant(t['cancelled_at'])]
+            else:
+                dates = closures[t['id']] + delivery_dates[t['id']] if closures[t['id']] and delivery_dates[t['id']] else []
             anchors.append(max(dates) if dates and all(dates) else None)
         if not all(anchors):
             f['status']='Protected: closure/date needs review'; continue

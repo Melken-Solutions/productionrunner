@@ -254,3 +254,40 @@ CREATE TABLE IF NOT EXISTS part_imports (
  FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
 );
 CREATE INDEX IF NOT EXISTS part_import_owner ON part_imports(tenant_id,actor_id);
+
+CREATE TABLE IF NOT EXISTS fulfillment_records (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN ('pack','depart')),quantity INTEGER NOT NULL CHECK(quantity>0),
+ destination TEXT NOT NULL,reference TEXT NOT NULL,method TEXT NOT NULL,notes TEXT NOT NULL,serials TEXT NOT NULL,
+ actor_id INTEGER NOT NULL,created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,ticket_id,id,kind),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS fulfillment_ticket ON fulfillment_records(tenant_id,ticket_id,kind);
+CREATE TABLE IF NOT EXISTS fulfillment_units (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,record_id INTEGER NOT NULL,unit_id TEXT NOT NULL,kind TEXT NOT NULL,
+ PRIMARY KEY(tenant_id,unit_id,kind),
+ FOREIGN KEY(tenant_id,ticket_id,record_id,kind) REFERENCES fulfillment_records(tenant_id,ticket_id,id,kind),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id)
+);
+CREATE TABLE IF NOT EXISTS fulfillment_checks (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,name TEXT NOT NULL,
+ stage TEXT NOT NULL CHECK(stage IN ('pack','depart')),actor_id INTEGER NOT NULL,created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS fulfillment_check_results (
+ tenant_id INTEGER NOT NULL,check_id INTEGER PRIMARY KEY,actor_id INTEGER NOT NULL,reference TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,check_id) REFERENCES fulfillment_checks(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TRIGGER IF NOT EXISTS fulfillment_records_no_update BEFORE UPDATE ON fulfillment_records BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_records_no_delete BEFORE DELETE ON fulfillment_records BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_units_no_update BEFORE UPDATE ON fulfillment_units BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_units_no_delete BEFORE DELETE ON fulfillment_units BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_checks_no_update BEFORE UPDATE ON fulfillment_checks BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_checks_no_delete BEFORE DELETE ON fulfillment_checks BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_check_results_no_update BEFORE UPDATE ON fulfillment_check_results BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_check_results_no_delete BEFORE DELETE ON fulfillment_check_results BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;

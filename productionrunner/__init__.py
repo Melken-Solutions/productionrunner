@@ -140,6 +140,8 @@ def create_app(config=None):
             abort(409, 'This ticket changed. Reload before submitting again.')
         return ticket
 
+    from .fulfillment import register_fulfillment
+    register_fulfillment(app, db, roles_required, now, lock_ticket, event)
     from .tenancy import register_commands
     register_commands(app)
     from .branding import register_branding

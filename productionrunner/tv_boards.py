@@ -2,10 +2,11 @@
 from collections import defaultdict
 from flask import abort,g,jsonify,render_template,request,redirect,url_for
 from .dispatch import released
+from .fulfillment import progress
 
 
 def board_data(conn,tenant_id,station_id=None):
-    tickets=conn.execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND t.state!='accepted' AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id) ORDER BY p.priority IS NULL,p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(tenant_id,)).fetchall()
+    tickets=conn.execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id) ORDER BY p.priority IS NULL,p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(tenant_id,)).fetchall()
     operations=defaultdict(list)
     for op in conn.execute('SELECT o.*,a.station_id,s.name AS station_name,u.username AS assigned_operator FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id LEFT JOIN users u ON u.id=a.operator_id WHERE o.tenant_id=? ORDER BY o.sequence',(tenant_id,)):
         operations[op['ticket_id']].append(op)
@@ -18,6 +19,8 @@ def board_data(conn,tenant_id,station_id=None):
     dispatch={r['ticket_id']:r['released'] for r in conn.execute('SELECT * FROM ticket_dispatch WHERE tenant_id=?',(tenant_id,))}
     output=[]
     for ticket in tickets:
+        delivery=progress(conn,tenant_id,ticket)
+        if delivery['closed']:continue
         ops=operations[ticket['id']]
         is_released=dispatch.get(ticket['id'],1)
         targets=units[ticket['id']] or [dict(id=None,state=ticket['state'])]
@@ -51,6 +54,11 @@ def board_data(conn,tenant_id,station_id=None):
                 else: per_op[op['id']]['upcoming']+=amount
         common=dict(ticket_id=ticket['id'],pn=ticket['pn'],revision=ticket['revision'],quantity=ticket['quantity'],hot=ticket['hot_priority'],accepted=accepted)
         if station_id is None:
+            if delivery['accepted']:
+                stages['Accepted / awaiting packing']+=delivery['available']
+                stages['Packed / awaiting departure']+=delivery['waiting']
+                stages['Departed']+=delivery['departed']
+                stages={name:count for name,count in stages.items() if count}
             output.append(dict(common,operation=' / '.join(f'{name}: {count}' for name,count in stages.items()),operator='',ready=ready,upcoming=0,held=held,inspection=inspection,planning=ticket['quantity']-accepted if not is_released else 0))
         else:
             for op in ops:

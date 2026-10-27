@@ -14,4 +14,4 @@
 </section>
 <section class="card"><h2>Work instructions</h2><p class="preserve">{{ ticket.instructions }}</p><h2>Shared route definition</h2><ol>{% for o in operations %}<li><strong>{{ o.name }}</strong>{% include 'route_attribution.html' %} — {{ o.instructions }}</li>{% endfor %}</ol></section>
 <section class="card"><h2>Audit history — all units</h2><ol>{% for e in events %}<li><strong>{{ e.action|replace('_',' ') }}</strong> · {{ e.username }}<p class="preserve">{{ e.detail }}</p><small>{{ e.created_at }}</small></li>{% endfor %}</ol></section>
-{% include 'production_controls.html' %}{% endblock %}
+{% include 'delivery_summary.html' %}{% include 'production_controls.html' %}{% endblock %}
