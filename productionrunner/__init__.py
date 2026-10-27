@@ -140,6 +140,8 @@ def create_app(config=None):
             abort(409, 'This ticket changed. Reload before submitting again.')
         return ticket
 
+    from .intake import register_intake, approved_request, link_ticket, actor as intake_actor
+    register_intake(app, db, roles_required, now)
     from .fulfillment import register_fulfillment
     register_fulfillment(app, db, roles_required, now, lock_ticket, event)
     from .tenancy import register_commands
@@ -242,12 +244,14 @@ def create_app(config=None):
     @app.route('/tickets/new', methods=['GET', 'POST'])
     @roles_required('planner')
     def new_ticket():
+        request_id = (request.args if request.method == 'GET' else request.form).get('request_id', '')
+        intake_entry = approved_request(db(), g.tenant['id'], request_id) if request_id else None
         if request.method == 'GET':
             parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
-            return render_template('new.html', parts=parts)
+            return render_template('new.html', parts=parts, intake_entry=intake_entry)
         pn = request.form.get('pn', '').strip()
         revision = request.form.get('revision', '').strip()
-        part_id = request.form.get('part_revision_id', '')
+        part_id = intake_entry['part_id'] if intake_entry else request.form.get('part_revision_id', '')
         part = find_part(db(), g.tenant['id'], part_id) if part_id else matching_part(db(), g.tenant['id'], pn, revision)
         if part:
             pn, revision = part['pn'], part['revision']
@@ -256,7 +260,7 @@ def create_app(config=None):
         if not revision or len(revision) > 40:
             abort(400, 'A revision of up to 40 characters is required.')
         try:
-            quantity = int(request.form.get('quantity', ''))
+            quantity = intake_entry['quantity'] if intake_entry else int(request.form.get('quantity', ''))
         except ValueError:
             abort(400, 'Quantity must be an integer.')
         if not 1 <= quantity <= 10000:
@@ -275,6 +279,12 @@ def create_app(config=None):
             abort(400, 'Provide work instructions and 1–20 routing steps, at most 500 characters per step.')
         ticket_id = 'JR-' + secrets.token_hex(6).upper()
         with db():
+            if intake_entry:
+                db().execute('BEGIN IMMEDIATE')
+                intake_actor(db(), g.tenant['id'], g.user['id'], ('planner',))
+                if request.form.get('request_version') != str(intake_entry['version']):
+                    abort(409, 'Request changed. Reopen the approved request.')
+                intake_entry = approved_request(db(), g.tenant['id'], request_id, str(intake_entry['version']))
             db().execute('INSERT INTO tickets(id,tenant_id,pn,revision,quantity,tracking,serials,instructions,state,created_by,created_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)',
                          (ticket_id, g.tenant['id'], pn, revision, quantity, tracking, json.dumps(serials), instructions, 'ready', g.user['id'], now()))
             db().execute('INSERT INTO ticket_dispatch VALUES(?,?,0)', (g.tenant['id'], ticket_id))
@@ -290,6 +300,9 @@ def create_app(config=None):
                 db().execute('INSERT INTO ticket_drawings VALUES(?,?,?)', (g.tenant['id'], ticket_id, part['id']))
                 event(ticket_id, 'drawing_attached', f"{pn} rev {revision}; {part['id']}")
             event(ticket_id, 'ticket_created', f'{pn} rev {revision}; quantity {quantity}; {tracking}')
+            if intake_entry:
+                link_ticket(db(), g.tenant['id'], g.user['id'], intake_entry, ticket_id, now())
+                event(ticket_id, 'request_linked', json.dumps(dict(request_id=request_id, source=intake_entry['source'], source_reference=intake_entry['source_reference'], requester=intake_entry['requester'], destination=intake_entry['destination'], required_date=intake_entry['required_date'], document_approver_id=intake_entry['approved_by'])))
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
     @app.get('/tickets/<ticket_id>')

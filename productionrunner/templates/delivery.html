@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'base.html' %}{% block content %}{% include 'intake_reference.html' %}
 <p><a href="{{ url_for('ticket_detail',ticket_id=ticket.id) }}">← Job {{ ticket.id }}</a> · <a href="{{ url_for('fulfillment_queue') }}">Packing &amp; dispatch queue</a></p>
 <h1>{{ ticket.pn }} · {{ ticket.revision }} — {{ delivery.status }}</h1>
 {% include 'cancellation.html' %}

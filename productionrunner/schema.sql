@@ -291,3 +291,31 @@ CREATE TRIGGER IF NOT EXISTS fulfillment_checks_no_update BEFORE UPDATE ON fulfi
 CREATE TRIGGER IF NOT EXISTS fulfillment_checks_no_delete BEFORE DELETE ON fulfillment_checks BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS fulfillment_check_results_no_update BEFORE UPDATE ON fulfillment_check_results BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS fulfillment_check_results_no_delete BEFORE DELETE ON fulfillment_check_results BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS intake_requests (
+ id TEXT PRIMARY KEY,tenant_id INTEGER NOT NULL,
+ item_type TEXT NOT NULL CHECK(item_type IN ('standard','custom')),
+ source TEXT NOT NULL CHECK(source IN ('manual','po','erp','email','smartsheet','other')),
+ source_reference TEXT NOT NULL,requester TEXT NOT NULL,destination TEXT NOT NULL,required_date TEXT NOT NULL,
+ pn TEXT NOT NULL,revision TEXT NOT NULL,quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 10000),description TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'preparing' CHECK(status IN ('preparing','approved','ticketed','cancelled')),
+ part_id TEXT,approved_by INTEGER,approved_at TEXT,ticket_id TEXT UNIQUE,
+ version INTEGER NOT NULL DEFAULT 1,created_by INTEGER NOT NULL,created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,id),
+ FOREIGN KEY(tenant_id,part_id) REFERENCES part_revisions(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,approved_by) REFERENCES memberships(tenant_id,user_id),
+ FOREIGN KEY(tenant_id,created_by) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS intake_tenant_status ON intake_requests(tenant_id,status,required_date);
+CREATE TRIGGER IF NOT EXISTS intake_no_delete BEFORE DELETE ON intake_requests BEGIN SELECT RAISE(ABORT,'Request history cannot be removed'); END;
+CREATE TRIGGER IF NOT EXISTS intake_terminal_no_update BEFORE UPDATE ON intake_requests WHEN OLD.status IN ('ticketed','cancelled') BEGIN SELECT RAISE(ABORT,'Converted/cancelled requests are immutable'); END;
+CREATE TABLE IF NOT EXISTS intake_events (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,request_id TEXT NOT NULL,actor_id INTEGER NOT NULL,
+ action TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,request_id) REFERENCES intake_requests(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS intake_history ON intake_events(tenant_id,request_id,id);
+CREATE TRIGGER IF NOT EXISTS intake_event_no_update BEFORE UPDATE ON intake_events BEGIN SELECT RAISE(ABORT,'Request evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS intake_event_no_delete BEFORE DELETE ON intake_events BEGIN SELECT RAISE(ABORT,'Request evidence is immutable'); END;

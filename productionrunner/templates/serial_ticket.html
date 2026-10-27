@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block content %}{% include 'dispatch_banner.html' %}{% include 'cancellation.html' %}{% include "ticket_drawing.html" %}
+{% block content %}{% include 'intake_reference.html' %}{% include 'dispatch_banner.html' %}{% include 'cancellation.html' %}{% include "ticket_drawing.html" %}
 <p class="eyebrow">TICKET / {{ ticket.id }}</p>
 <h1>{{ ticket.pn }} · Rev {{ ticket.revision }}</h1>
 <p>{{ ticket.quantity }} independent units · Summary: <strong>{{ ticket.state|replace('_',' ') }}</strong></p>
