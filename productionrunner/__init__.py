@@ -148,6 +148,8 @@ def create_app(config=None):
     register_fulfillment(app, db, roles_required, now, lock_ticket, event)
     from .returns import register_returns
     register_returns(app, db, roles_required, now, lock_ticket, event)
+    from .return_repairs import register_return_repairs
+    register_return_repairs(app, db, roles_required, now, lock_ticket, event)
     from .tenancy import register_commands
     register_commands(app)
     from .branding import register_branding

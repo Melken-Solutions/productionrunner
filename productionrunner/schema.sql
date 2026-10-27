@@ -388,3 +388,34 @@ CREATE TRIGGER IF NOT EXISTS customer_return_units_no_update BEFORE UPDATE ON cu
 CREATE TRIGGER IF NOT EXISTS customer_return_units_no_delete BEFORE DELETE ON customer_return_units BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS customer_return_reviews_no_update BEFORE UPDATE ON customer_return_reviews BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS customer_return_reviews_no_delete BEFORE DELETE ON customer_return_reviews BEGIN SELECT RAISE(ABORT,'Return evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS return_repairs (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,return_id INTEGER PRIMARY KEY,repair_ticket_id TEXT NOT NULL UNIQUE,
+ actor_id INTEGER NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,ticket_id,return_id,repair_ticket_id),
+ FOREIGN KEY(tenant_id,ticket_id,return_id) REFERENCES customer_returns(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,repair_ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS return_repair_units (
+ tenant_id INTEGER NOT NULL,return_id INTEGER NOT NULL,
+ original_unit_id TEXT NOT NULL,repair_unit_id TEXT PRIMARY KEY,
+ ticket_id TEXT NOT NULL,repair_ticket_id TEXT NOT NULL,
+ UNIQUE(return_id,original_unit_id),
+ FOREIGN KEY(tenant_id,ticket_id,return_id,repair_ticket_id) REFERENCES return_repairs(tenant_id,ticket_id,return_id,repair_ticket_id),
+ FOREIGN KEY(tenant_id,ticket_id,original_unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,repair_ticket_id,repair_unit_id) REFERENCES serial_units(tenant_id,ticket_id,id)
+);
+CREATE TABLE IF NOT EXISTS return_closure_events (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,return_id INTEGER NOT NULL,
+ action TEXT NOT NULL CHECK(action IN ('closed','reopened')),reason TEXT NOT NULL,actor_id INTEGER NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,return_id) REFERENCES customer_returns(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS return_closure_latest ON return_closure_events(tenant_id,return_id,id);
+CREATE TRIGGER IF NOT EXISTS return_repairs_no_update BEFORE UPDATE ON return_repairs BEGIN SELECT RAISE(ABORT,'Repair links are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS return_repairs_no_delete BEFORE DELETE ON return_repairs BEGIN SELECT RAISE(ABORT,'Repair links are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS return_repair_units_no_update BEFORE UPDATE ON return_repair_units BEGIN SELECT RAISE(ABORT,'Repair links are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS return_repair_units_no_delete BEFORE DELETE ON return_repair_units BEGIN SELECT RAISE(ABORT,'Repair links are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS return_closure_no_update BEFORE UPDATE ON return_closure_events BEGIN SELECT RAISE(ABORT,'Return closure evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS return_closure_no_delete BEFORE DELETE ON return_closure_events BEGIN SELECT RAISE(ABORT,'Return closure evidence is immutable'); END;

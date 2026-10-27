@@ -128,6 +128,8 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
                 abort(409, 'Reversal would conflict with current quantities.')
             if state['closed'] and not after['closed']:
                 event(ticket_id, 'delivery_reopened', detail)
+            from .return_repairs import reopen_after_correction
+            reopen_after_correction(db(),g.tenant['id'],g.user['id'],ticket_id,now(),event)
             touch(ticket_id)
         return redirect(url_for('delivery_detail', ticket_id=ticket_id))
 

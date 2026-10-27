@@ -39,7 +39,9 @@ def inventory(conn, tenant, settings, clock):
     unsafe_units = {r[0] for r in conn.execute("SELECT DISTINCT ticket_id FROM serial_units WHERE tenant_id=? AND state!='accepted'", (tenant,))}
     keeps = {(r['part_revision_id'],r['kind']):dict(r) for r in conn.execute('SELECT * FROM storage_file_controls WHERE tenant_id=?', (tenant,))}
     preparing_parts = {r[0] for r in conn.execute("SELECT p.id FROM part_revisions p JOIN intake_requests i ON i.tenant_id=p.tenant_id AND i.pn=p.pn AND i.revision=p.revision WHERE p.tenant_id=? AND i.status IN ('preparing','approved')", (tenant,))}
-    return_tickets = {r[0] for r in conn.execute('SELECT DISTINCT ticket_id FROM customer_returns WHERE tenant_id=?',(tenant,))}
+    return_tickets = {r[0] for r in conn.execute("SELECT DISTINCT r.ticket_id FROM customer_returns r WHERE r.tenant_id=? AND COALESCE((SELECT e.action FROM return_closure_events e WHERE e.tenant_id=r.tenant_id AND e.return_id=r.id ORDER BY e.id DESC LIMIT 1),'open')!='closed'",(tenant,))}
+    for row in conn.execute("SELECT ticket_id,created_at FROM return_closure_events WHERE tenant_id=? AND action='closed'",(tenant,)):
+        closures[row['ticket_id']].append(instant(row['created_at']))
     duplicates = defaultdict(list)
     for f in files:
         keep = keeps.get((f['id'],f['kind']), {})

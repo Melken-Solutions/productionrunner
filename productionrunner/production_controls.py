@@ -47,6 +47,8 @@ def register_controls(app, db, roles_required, now, lock_ticket):
             abort(400, 'Confirm cancellation of this ticket and its remaining work.')
         with db():
             ticket = lock_ticket(ticket_id)
+            if db().execute('SELECT 1 FROM return_repairs WHERE tenant_id=? AND repair_ticket_id=?',(g.tenant['id'],ticket_id)).fetchone():
+                abort(409,'Linked return repair jobs cannot be cancelled; keep the return traceable.')
             if db().execute('SELECT 1 FROM fulfillment_records WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket_id)).fetchone():
                 abort(409, 'Tickets with packing or departure evidence cannot be cancelled.')
             if ticket['state'] == 'accepted':

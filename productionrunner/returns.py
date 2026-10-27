@@ -11,7 +11,7 @@ def register_returns(app, db, roles_required, now, lock_ticket, event):
     def history(ticket_id=None):
         clause = ' AND r.ticket_id=?' if ticket_id else ''
         args = (g.tenant['id'], ticket_id) if ticket_id else (g.tenant['id'],)
-        return db().execute('SELECT r.*,u.username,t.pn,t.revision,v.decision,v.notes AS review_notes,v.created_at AS reviewed_at,vu.username AS reviewed_by FROM customer_returns r JOIN tickets t ON t.tenant_id=r.tenant_id AND t.id=r.ticket_id JOIN users u ON u.id=r.actor_id LEFT JOIN customer_return_reviews v ON v.tenant_id=r.tenant_id AND v.return_id=r.id LEFT JOIN users vu ON vu.id=v.actor_id WHERE r.tenant_id=?'+clause+' ORDER BY r.id DESC', args).fetchall()
+        return db().execute('SELECT r.*,u.username,t.pn,t.revision,v.decision,v.notes AS review_notes,v.created_at AS reviewed_at,vu.username AS reviewed_by,l.repair_ticket_id,rt.version AS repair_version,ce.action AS closure_action,ce.reason AS closure_reason,ce.created_at AS closure_at FROM customer_returns r JOIN tickets t ON t.tenant_id=r.tenant_id AND t.id=r.ticket_id JOIN users u ON u.id=r.actor_id LEFT JOIN customer_return_reviews v ON v.tenant_id=r.tenant_id AND v.return_id=r.id LEFT JOIN users vu ON vu.id=v.actor_id LEFT JOIN return_repairs l ON l.tenant_id=r.tenant_id AND l.return_id=r.id LEFT JOIN tickets rt ON rt.tenant_id=l.tenant_id AND rt.id=l.repair_ticket_id LEFT JOIN return_closure_events ce ON ce.id=(SELECT MAX(e.id) FROM return_closure_events e WHERE e.tenant_id=r.tenant_id AND e.return_id=r.id) WHERE r.tenant_id=?'+clause+' ORDER BY r.id DESC', args).fetchall()
 
     def text(name, limit=500):
         value = request.form.get(name, '').strip()
@@ -31,7 +31,10 @@ def register_returns(app, db, roles_required, now, lock_ticket, event):
     @app.get('/returns')
     @roles_required()
     def returns_queue():
-        return render_template('returns_queue.html', entries=history(), decisions=DECISIONS)
+        view=request.args.get('view','open')
+        if view not in {'open','closed'}:abort(400)
+        entries=[r for r in history() if (r['closure_action']=='closed')==(view=='closed')]
+        return render_template('returns_queue.html', entries=entries, decisions=DECISIONS, view=view)
 
     @app.route('/tickets/<ticket_id>/returns', methods=['GET', 'POST'])
     @roles_required()
