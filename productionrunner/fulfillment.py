@@ -5,7 +5,7 @@ from .admin import epoch
 
 
 def progress(conn, tenant, ticket):
-    totals = {r['kind']: r['qty'] for r in conn.execute('SELECT kind,SUM(quantity) AS qty FROM fulfillment_records WHERE tenant_id=? AND ticket_id=? GROUP BY kind', (tenant, ticket['id']))}
+    totals = {r['kind']: r['qty'] for r in conn.execute('SELECT kind,SUM(quantity) AS qty FROM fulfillment_active_records WHERE tenant_id=? AND ticket_id=? GROUP BY kind', (tenant, ticket['id']))}
     packed, departed = totals.get('pack', 0), totals.get('depart', 0)
     units = conn.execute('SELECT COUNT(*) AS total,SUM(state=\'accepted\') AS accepted FROM serial_units WHERE tenant_id=? AND ticket_id=?', (tenant, ticket['id'])).fetchone()
     accepted = (units['accepted'] or 0) if units['total'] else (ticket['quantity'] if ticket['state'] == 'accepted' else 0)
@@ -53,9 +53,10 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             abort(404)
         delivery = progress(db(), g.tenant['id'], ticket)
         checks = db().execute('SELECT c.*,r.reference,r.created_at AS completed_at,u.username FROM fulfillment_checks c LEFT JOIN fulfillment_check_results r ON r.check_id=c.id AND r.tenant_id=c.tenant_id LEFT JOIN users u ON u.id=r.actor_id WHERE c.tenant_id=? AND c.ticket_id=? ORDER BY c.id', (g.tenant['id'], ticket_id)).fetchall()
-        history = db().execute('SELECT f.*,u.username FROM fulfillment_records f JOIN users u ON u.id=f.actor_id WHERE f.tenant_id=? AND f.ticket_id=? ORDER BY f.id', (g.tenant['id'], ticket_id)).fetchall()
-        units = db().execute("SELECT s.*,EXISTS(SELECT 1 FROM fulfillment_units f WHERE f.tenant_id=s.tenant_id AND f.unit_id=s.id AND f.kind='pack') AS packed,EXISTS(SELECT 1 FROM fulfillment_units f WHERE f.tenant_id=s.tenant_id AND f.unit_id=s.id AND f.kind='depart') AS departed FROM serial_units s WHERE s.tenant_id=? AND s.ticket_id=? ORDER BY s.serial", (g.tenant['id'], ticket_id)).fetchall()
-        return render_template('delivery.html', ticket=ticket, delivery=delivery, checks=checks, history=history, units=units)
+        history = db().execute('SELECT f.*,u.username,r.reason AS reversal_reason,r.created_at AS reversed_at,ru.username AS reversed_by FROM fulfillment_records f JOIN users u ON u.id=f.actor_id LEFT JOIN fulfillment_reversals r ON r.record_id=f.id AND r.tenant_id=f.tenant_id LEFT JOIN users ru ON ru.id=r.actor_id WHERE f.tenant_id=? AND f.ticket_id=? ORDER BY f.id', (g.tenant['id'], ticket_id)).fetchall()
+        units = db().execute("SELECT s.*,EXISTS(SELECT 1 FROM fulfillment_active_units f WHERE f.tenant_id=s.tenant_id AND f.unit_id=s.id AND f.kind='pack') AS packed,EXISTS(SELECT 1 FROM fulfillment_active_units f WHERE f.tenant_id=s.tenant_id AND f.unit_id=s.id AND f.kind='depart') AS departed FROM serial_units s WHERE s.tenant_id=? AND s.ticket_id=? ORDER BY s.serial", (g.tenant['id'], ticket_id)).fetchall()
+        latest = next((h['id'] for h in reversed(history) if not h['reversed_at']), None)
+        return render_template('delivery.html', ticket=ticket, delivery=delivery, checks=checks, history=history, units=units, reversible_id=latest, started={h['kind'] for h in history})
 
     @app.post('/tickets/<ticket_id>/delivery/checks')
     @roles_required('planner', 'admin')
@@ -72,7 +73,7 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
                 stage = request.form.get('stage')
                 if stage not in {'pack', 'depart'}:
                     abort(400, 'Choose a checkpoint stage.')
-                if (stage == 'pack' and state['packed']) or (stage == 'depart' and state['departed']):
+                if db().execute('SELECT 1 FROM fulfillment_records WHERE tenant_id=? AND ticket_id=? AND kind=?', (g.tenant['id'], ticket_id, stage)).fetchone():
                     abort(409, 'That stage has already started. Requirements cannot be added retroactively.')
                 if db().execute('SELECT COUNT(*) FROM fulfillment_checks WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket_id)).fetchone()[0] >= 20:
                     abort(400, 'At most 20 checkpoints per ticket.')
@@ -91,6 +92,38 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
                 event(ticket_id, 'delivery_checkpoint_completed', json.dumps(dict(check_id=check['id'], name=check['name'], reference=reference)))
             else:
                 abort(400)
+            touch(ticket_id)
+        return redirect(url_for('delivery_detail', ticket_id=ticket_id))
+
+    @app.post('/tickets/<ticket_id>/delivery/records/<int:record_id>/reverse')
+    @roles_required('planner', 'admin')
+    def reverse_delivery(ticket_id, record_id):
+        reason = text('reason')
+        if request.form.get('confirm') != 'yes':
+            abort(400, 'Confirm this is a recording correction, not a customer return.')
+        with db():
+            ticket = lock_ticket(ticket_id)
+            actor(('planner', 'admin'))
+            record = db().execute('SELECT * FROM fulfillment_records WHERE tenant_id=? AND ticket_id=? AND id=?', (g.tenant['id'], ticket_id, record_id)).fetchone()
+            if not record:
+                abort(404)
+            latest = db().execute('SELECT id FROM fulfillment_active_records WHERE tenant_id=? AND ticket_id=? ORDER BY id DESC LIMIT 1', (g.tenant['id'], ticket_id)).fetchone()
+            if not latest or latest['id'] != record_id:
+                abort(409, 'Reverse the newest unreversed movement first. This entry is already reversed or has later activity.')
+            state = progress(db(), g.tenant['id'], ticket)
+            linked = db().execute('SELECT unit_id FROM fulfillment_active_units WHERE tenant_id=? AND record_id=?', (g.tenant['id'], record_id)).fetchall()
+            db().execute('INSERT INTO fulfillment_reversals VALUES(?,?,?,?,?,?,?)', (g.tenant['id'], ticket_id, record_id, record['kind'], g.user['id'], reason, now()))
+            detail = json.dumps(dict(record_id=record_id, kind=record['kind'], quantity=record['quantity'], serials=json.loads(record['serials']), reason=reason))
+            event(ticket_id, 'delivery_record_reversed', detail)
+            for unit in linked:
+                event(ticket_id, 'unit_delivery_reversed', detail)
+                eid = db().execute('SELECT last_insert_rowid()').fetchone()[0]
+                db().execute('INSERT INTO unit_event_links VALUES(?,?,?,?)', (g.tenant['id'], ticket_id, unit['unit_id'], eid))
+            after = progress(db(), g.tenant['id'], ticket)
+            if after['waiting'] < 0 or after['available'] < 0:
+                abort(409, 'Reversal would conflict with current quantities.')
+            if state['closed'] and not after['closed']:
+                event(ticket_id, 'delivery_reopened', detail)
             touch(ticket_id)
         return redirect(url_for('delivery_detail', ticket_id=ticket_id))
 
@@ -127,7 +160,7 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
                         abort(404)
                     if unit['state'] != 'accepted':
                         abort(409, 'Only accepted serial units can be packed or depart.')
-                    done = {r[0] for r in db().execute('SELECT kind FROM fulfillment_units WHERE tenant_id=? AND unit_id=?', (g.tenant['id'], uid))}
+                    done = {r[0] for r in db().execute('SELECT kind FROM fulfillment_active_units WHERE tenant_id=? AND unit_id=?', (g.tenant['id'], uid))}
                     if kind in done or (kind == 'depart' and 'pack' not in done):
                         abort(409, 'Unit already recorded or not yet packed.')
                     serial_names.append(unit['serial'])
@@ -147,7 +180,7 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             stamp = now()
             record = db().execute('INSERT INTO fulfillment_records(tenant_id,ticket_id,kind,quantity,destination,reference,method,notes,serials,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)', (g.tenant['id'], ticket_id, kind, quantity, destination, reference, method, notes, json.dumps(serial_names), g.user['id'], stamp))
             for uid in selected:
-                db().execute('INSERT INTO fulfillment_units VALUES(?,?,?,?,?)', (g.tenant['id'], ticket_id, record.lastrowid, uid, kind))
+                db().execute('INSERT INTO fulfillment_unit_entries VALUES(?,?,?,?,?)', (g.tenant['id'], ticket_id, record.lastrowid, uid, kind))
             event(ticket_id, 'units_packed' if kind == 'pack' else 'units_departed', json.dumps(dict(record_id=record.lastrowid, quantity=quantity, serials=serial_names, destination=destination, reference=reference, method=method, notes=notes)))
             if selected:
                 # The existing link table permits one unit per event; keep each unit's history explicit.

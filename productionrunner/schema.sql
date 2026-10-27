@@ -332,3 +332,29 @@ CREATE TABLE IF NOT EXISTS ticket_workflow (
 );
 CREATE TRIGGER IF NOT EXISTS ticket_workflow_no_update BEFORE UPDATE ON ticket_workflow BEGIN SELECT RAISE(ABORT,'Ticket workflow snapshot is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS ticket_workflow_no_delete BEFORE DELETE ON ticket_workflow BEGIN SELECT RAISE(ABORT,'Ticket workflow snapshot is immutable'); END;
+
+-- Append-only reversals preserve the original physical-action evidence.
+CREATE TABLE IF NOT EXISTS fulfillment_reversals (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,record_id INTEGER PRIMARY KEY,kind TEXT NOT NULL,
+ actor_id INTEGER NOT NULL,reason TEXT NOT NULL CHECK(length(reason) BETWEEN 1 AND 500),created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,record_id,kind) REFERENCES fulfillment_records(tenant_id,ticket_id,id,kind),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+-- Original unit links remain untouched; subsequent movements allow repeat cycles.
+CREATE TABLE IF NOT EXISTS fulfillment_unit_entries (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,record_id INTEGER NOT NULL,unit_id TEXT NOT NULL,kind TEXT NOT NULL,
+ PRIMARY KEY(record_id,unit_id),
+ FOREIGN KEY(tenant_id,ticket_id,record_id,kind) REFERENCES fulfillment_records(tenant_id,ticket_id,id,kind),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id)
+);
+CREATE VIEW IF NOT EXISTS fulfillment_active_records AS
+ SELECT f.* FROM fulfillment_records f WHERE NOT EXISTS
+ (SELECT 1 FROM fulfillment_reversals r WHERE r.record_id=f.id AND r.tenant_id=f.tenant_id);
+CREATE VIEW IF NOT EXISTS fulfillment_active_units AS
+ SELECT f.* FROM fulfillment_units f JOIN fulfillment_active_records r ON r.id=f.record_id AND r.tenant_id=f.tenant_id
+ UNION ALL
+ SELECT f.* FROM fulfillment_unit_entries f JOIN fulfillment_active_records r ON r.id=f.record_id AND r.tenant_id=f.tenant_id;
+CREATE TRIGGER IF NOT EXISTS fulfillment_reversals_no_update BEFORE UPDATE ON fulfillment_reversals BEGIN SELECT RAISE(ABORT,'Correction evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_reversals_no_delete BEFORE DELETE ON fulfillment_reversals BEGIN SELECT RAISE(ABORT,'Correction evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_unit_entries_no_update BEFORE UPDATE ON fulfillment_unit_entries BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS fulfillment_unit_entries_no_delete BEFORE DELETE ON fulfillment_unit_entries BEGIN SELECT RAISE(ABORT,'Delivery evidence is immutable'); END;

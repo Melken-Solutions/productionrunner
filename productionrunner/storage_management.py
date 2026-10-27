@@ -32,7 +32,7 @@ def inventory(conn, tenant, settings, clock):
     closures = defaultdict(list)
     for r in conn.execute("SELECT ticket_id,created_at FROM events WHERE tenant_id=? AND action IN ('inspection_pass','unit_inspection_pass','rework_inspection_pass')", (tenant,)):
         closures[r['ticket_id']].append(instant(r['created_at']))
-    departures = {r['ticket_id']:r['quantity'] for r in conn.execute("SELECT ticket_id,SUM(quantity) AS quantity FROM fulfillment_records WHERE tenant_id=? AND kind='depart' GROUP BY ticket_id", (tenant,))}
+    departures = {r['ticket_id']:r['quantity'] for r in conn.execute("SELECT ticket_id,SUM(quantity) AS quantity FROM fulfillment_active_records WHERE tenant_id=? AND kind='depart' GROUP BY ticket_id", (tenant,))}
     delivery_dates = defaultdict(list)
     for r in conn.execute("SELECT ticket_id,created_at FROM events WHERE tenant_id=? AND action='delivery_closed'", (tenant,)):
         delivery_dates[r['ticket_id']].append(instant(r['created_at']))
