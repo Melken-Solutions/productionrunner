@@ -1,0 +1,21 @@
+{% extends 'base.html' %}{% block content %}
+<p><a href="{{ url_for('admin_organization') }}">← Organization management</a></p><h1>Organization branding</h1>
+<p>Customize your app, TV boards and printed travelers. Leave display name blank to use your organization profile name. Sign-in code and production status colors stay unchanged. Shared sign-in remains ProductionRunner.</p>
+{% if saved %}<p role="status" class="badge accepted">Branding saved.</p>{% endif %}
+{% if preview %}<p role="status" class="alert">Preview only — nothing has been saved. Review the header and samples below, then save.</p>{% endif %}
+<form method="post" enctype="multipart/form-data" class="stack card">
+<input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ settings.version }}">
+<input type="hidden" name="preview_logo" value="{{ preview_logo }}">
+<label>Display name (optional)<input name="display_name" maxlength="160" value="{{ settings.display_name }}"></label>
+<div class="grid"><label>Primary color<input type="color" name="primary_color" value="{{ settings.primary_color }}"></label><label>Accent color<input type="color" name="accent_color" value="{{ settings.accent_color }}"></label></div>
+<p>Text on brand-colored backgrounds automatically uses black or white for contrast. HOT, hold, stale warnings and barcode colors are fixed.</p>
+<label>Company logo (PNG/JPEG, up to 2 MB and 2048 × 2048 pixels)<input type="file" name="logo" accept="image/png,image/jpeg"></label>
+<label class="check"><input type="checkbox" name="remove_logo" value="yes" {% if preview and not settings.logo %}checked{% endif %}>Remove logo</label>
+<label>Reason for saving or resetting (required when saving)<textarea name="reason" maxlength="500">{{ request.form.get('reason','') }}</textarea></label>
+<div class="row"><button name="action" value="preview">Preview changes</button><button name="action" value="save">Save branding</button><button class="secondary" name="action" value="reset">Reset to defaults</button></div>
+</form>
+<section class="card"><h2>{{ 'Unsaved' if preview else 'Current' }} appearance</h2>
+<div class="brand-sample"><div class="brand-sample-heading">{% include 'brand_identity.html' %}<p>Laser 1 · Station queue</p></div><p><span class="badge hot">HOT 1</span> <span class="badge held">Held</span> Status colors remain consistent.</p></div>
+<div class="brand-print-sample"><p>Printed traveler identity</p>{% include 'brand_identity.html' %}<p>PN-EXAMPLE · Rev A · Serial S1</p><p>Production identifiers and barcodes remain black on white.</p></div>
+</section><p>Reload open pages to see saved changes. Existing paper copies do not change. Logos are normalized to PNG; original drawing and DXF files are never modified.</p>
+{% endblock %}

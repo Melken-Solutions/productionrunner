@@ -223,3 +223,12 @@ CREATE TABLE IF NOT EXISTS station_events (
 );
 CREATE TRIGGER IF NOT EXISTS station_events_no_update BEFORE UPDATE ON station_events BEGIN SELECT RAISE(ABORT,'Station history is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS station_events_no_delete BEFORE DELETE ON station_events BEGIN SELECT RAISE(ABORT,'Station history is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS organization_branding (
+    tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id),
+    display_name TEXT NOT NULL DEFAULT '',
+    primary_color TEXT NOT NULL DEFAULT '#102c3a',
+    accent_color TEXT NOT NULL DEFAULT '#007477',
+    logo BLOB,
+    version INTEGER NOT NULL DEFAULT 1
+);

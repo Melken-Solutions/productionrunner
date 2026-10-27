@@ -1,0 +1,13 @@
+body>header,.brand-sample-heading{background:var(--brand-primary);color:var(--brand-primary-text);border-bottom:4px solid var(--brand-accent)}
+body>header a,body>header p{color:var(--brand-primary-text)}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}.brand span{margin-left:0}
+.brand-name{overflow-wrap:anywhere;min-width:0}.brand-logo{display:inline-block;width:auto;max-width:160px;height:48px;object-fit:contain;background:white;border-radius:4px;padding:4px;vertical-align:middle;flex-shrink:0}
+button:not(.secondary):not(.hot-button),.button:not(.secondary):not(.hot-button){background:var(--brand-accent);color:var(--brand-accent-text)}
+button:not(.secondary):not(.hot-button):hover,.button:not(.secondary):not(.hot-button):hover{filter:brightness(.92)}
+.brand-sample-heading{padding:20px}.brand-print-sample{margin-top:24px;border:1px solid #bbb;background:white;color:black;padding:20px}
+.traveler-brand{display:flex;align-items:center;gap:12px;break-inside:avoid;margin-bottom:16px;color:black}
+.tv-brand{display:flex;align-items:center;gap:12px;max-width:70vw}.tv-brand .brand-name{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.tv-brand .brand-logo{height:40px;max-width:120px}
+@media print{.traveler-brand .brand-logo{height:15mm;max-width:45mm}.traveler-brand{color:black;background:white}a{color:black}}
+input[type=color]{height:56px;padding:6px;cursor:pointer}body>header{flex-wrap:wrap}.brand{max-width:100%}.identity{flex-wrap:wrap}.brand-sample-heading .brand-name{font-weight:750;margin-left:12px}
+
+body>header nav a{background:var(--brand-primary);color:var(--brand-primary-text);border-color:var(--brand-primary-text)}

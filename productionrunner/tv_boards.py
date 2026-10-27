@@ -63,7 +63,7 @@ def board_data(conn,tenant_id,station_id=None):
 def register_tv(app,db,roles_required,now):
     @app.before_request
     def restrict_display_account():
-        if 'display' in getattr(g,'roles',[]) and request.endpoint not in {'static','login','logout','tv_boards','tv_board','tv_data'}:
+        if 'display' in getattr(g,'roles',[]) and request.endpoint not in {'static','login','logout','tv_boards','tv_board','tv_data','brand_logo'}:
             abort(403,'This display account can only view TV boards.')
 
     def selected_station():
@@ -93,4 +93,5 @@ def register_tv(app,db,roles_required,now):
         with db():
             db().execute('BEGIN')
             rows=board_data(db(),g.tenant['id'],station['id'] if station else None)
-        return jsonify(organization=g.tenant['name'],station=station['name'] if station else 'Whole shop',active=bool(station['active']) if station else True,generated_at=now(),rows=rows)
+        brand=db().execute('SELECT display_name FROM organization_branding WHERE tenant_id=?',(g.tenant['id'],)).fetchone()
+        return jsonify(organization=(brand['display_name'] if brand and brand['display_name'] else g.tenant['name']),station=station['name'] if station else 'Whole shop',active=bool(station['active']) if station else True,generated_at=now(),rows=rows)

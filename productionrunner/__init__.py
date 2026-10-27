@@ -58,7 +58,9 @@ def create_app(config=None):
 
     @app.before_request
     def prepare():
-        if request.endpoint == 'upload_dxf':
+        if request.endpoint == 'admin_branding':
+            request.max_content_length = 4 * 1024 * 1024
+        elif request.endpoint == 'upload_dxf':
             request.max_content_length = 21 * 1024 * 1024
         elif request.endpoint != 'new_part':
             request.max_content_length = 64 * 1024
@@ -122,6 +124,8 @@ def create_app(config=None):
 
     from .tenancy import register_commands
     register_commands(app)
+    from .branding import register_branding
+    register_branding(app, db, roles_required)
     from .admin import register_admin
     register_admin(app, db, roles_required)
     from .dispatch import register_dispatch

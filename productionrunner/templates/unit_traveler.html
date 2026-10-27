@@ -2,7 +2,7 @@
 {% block content %}{% include 'dispatch_banner.html' %}{% include 'cancellation.html' %}
 <div class="no-print"><a href="{{ url_for('unit_detail', unit_id=unit.id) }}">← Live unit progress</a><p>Print at 100% and scan-test before use.</p></div>
 <article class="traveler"><p class="eyebrow">INDIVIDUAL JOBRUNNER TRAVELER</p><h1>Serial {{ unit.serial }}</h1>
-<p><strong>Organization:</strong> {{ g.tenant.name }}</p><img class="barcode" src="{{ url_for('unit_barcode', unit_id=unit.id) }}" alt="Code 128 barcode for {{ unit.id }}">
+<div class="traveler-brand">{% include 'brand_identity.html' %}</div><img class="barcode" src="{{ url_for('unit_barcode', unit_id=unit.id) }}" alt="Code 128 barcode for {{ unit.id }}">
 <p>{{ unit.id }} · Parent ticket {{ ticket.id }}</p><h2>{{ ticket.pn }} · Rev {{ ticket.revision }}</h2><p><strong>Quantity: 1</strong></p>
 <p><strong>KEEP THIS TRAVELER WITH THIS INDIVIDUAL UNIT.</strong> Scan to verify serial identity and current status before working.</p>
 {% set drawing = drawing_for(ticket) %}{% if drawing %}<p>Drawing: {{ drawing.pn }} rev {{ drawing.revision }} — open the live ticket to view its fixed reference.</p>{% endif %}<h3>Work instructions / acceptance criteria</h3><p class="preserve">{{ ticket.instructions }}</p>
