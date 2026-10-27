@@ -142,6 +142,8 @@ def create_app(config=None):
     register_commands(app)
     from .branding import register_branding
     register_branding(app, db, roles_required)
+    from .storage_management import register_storage
+    register_storage(app, db, roles_required)
     from .admin import register_admin
     register_admin(app, db, roles_required)
     from .dispatch import register_dispatch

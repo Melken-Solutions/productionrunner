@@ -232,3 +232,18 @@ CREATE TABLE IF NOT EXISTS organization_branding (
     logo BLOB,
     version INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS storage_policies (
+ tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id),
+ pdf_days INTEGER CHECK(pdf_days BETWEEN 1 AND 36500),
+ dxf_days INTEGER CHECK(dxf_days BETWEEN 1 AND 36500),
+ grace_days INTEGER NOT NULL DEFAULT 30 CHECK(grace_days BETWEEN 7 AND 365),
+ version INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS storage_file_controls (
+ tenant_id INTEGER NOT NULL, part_revision_id TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN ('pdf','dxf')), keep_forever INTEGER NOT NULL CHECK(keep_forever IN (0,1)),
+ version INTEGER NOT NULL DEFAULT 1,
+ PRIMARY KEY(tenant_id,part_revision_id,kind),
+ FOREIGN KEY(tenant_id,part_revision_id) REFERENCES part_revisions(tenant_id,id)
+);
