@@ -319,3 +319,16 @@ CREATE TABLE IF NOT EXISTS intake_events (
 CREATE INDEX IF NOT EXISTS intake_history ON intake_events(tenant_id,request_id,id);
 CREATE TRIGGER IF NOT EXISTS intake_event_no_update BEFORE UPDATE ON intake_events BEGIN SELECT RAISE(ABORT,'Request evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS intake_event_no_delete BEFORE DELETE ON intake_events BEGIN SELECT RAISE(ABORT,'Request evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS workflow_defaults (
+ tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id),
+ require_intake INTEGER NOT NULL CHECK(require_intake IN (0,1)),checks TEXT NOT NULL,
+ version INTEGER NOT NULL CHECK(version>0)
+);
+CREATE TABLE IF NOT EXISTS ticket_workflow (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT PRIMARY KEY,policy_version INTEGER NOT NULL,
+ require_intake INTEGER NOT NULL CHECK(require_intake IN (0,1)),checks TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id)
+);
+CREATE TRIGGER IF NOT EXISTS ticket_workflow_no_update BEFORE UPDATE ON ticket_workflow BEGIN SELECT RAISE(ABORT,'Ticket workflow snapshot is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS ticket_workflow_no_delete BEFORE DELETE ON ticket_workflow BEGIN SELECT RAISE(ABORT,'Ticket workflow snapshot is immutable'); END;

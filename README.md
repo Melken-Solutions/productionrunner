@@ -242,7 +242,7 @@ The new open/closed delivery queue and ticket delivery status retain visibility 
 
 Back up and run `init-db` before restart for additive delivery tables. All movement/checkpoint evidence is tenant-scoped and immutable, writes recheck role access under a lock, reject stale versions and commit with audit history. The migration preserves all existing production and file records.
 
-Request-source intake and standard/custom document readiness are now implemented as described below. Organization-wide checkpoint templates and optional ERP integrations remain future phases. Delivery checkpoints currently remain manual and per-ticket.
+Request-source intake and standard/custom document readiness are now implemented as described below. Organization workflow defaults now supply per-ticket checkpoint snapshots as described below. ERP transactions remain manually recorded; automated integrations remain future work.
 
 ### Request intake and drawing preparation
 
@@ -252,6 +252,17 @@ Standard items use an exact existing catalog PN/revision; its PDF or external HT
 
 Approval records the actual approver, time, reason, part reference, PDF/DXF checksums and external URL where applicable. Changing request fields clears approval; explicit Reopen preparation also revokes it. Adding a previously absent DXF after approval requires reopening/reapproval before conversion. Open preparing/approved requests protect matching files from retention eligibility. Planners convert approved requests into one ticket, selecting routing/tracking/serials while PN/revision/quantity are enforced from the approved request. Source details and approval remain linked through delivery. Ticket creation does not release production; normal station assignment and planner release still apply. Admins may receive/review requests but need the planner role to create tickets, preserving existing role policy.
 
-Conversion is atomic and version-checked with request/ticket audit history; repeated or concurrent conversion cannot duplicate a job. Converted and cancelled requests are immutable. Cancellation before conversion does not cancel unrelated tickets; post-conversion cancellation uses existing ticket rules. Original direct ticket creation remains available for existing workflows and has no inferred intake approval. Existing tickets are not backfilled with guessed requests. Request templates/automated source connectors, organization-wide ERP gate defaults, formal engineering approval roles, and request split/merge remain future phases.
+Conversion is atomic and version-checked with request/ticket audit history; repeated or concurrent conversion cannot duplicate a job. Converted and cancelled requests are immutable. Cancellation before conversion does not cancel unrelated tickets; post-conversion cancellation uses existing ticket rules. Original direct ticket creation remains available for existing workflows and has no inferred intake approval. Existing tickets are not backfilled with guessed requests. Request templates/automated source connectors, formal engineering approval roles, and request split/merge remain future phases. Organization-wide ERP gate defaults are described below.
 
 Back up and run `init-db` before restarting for the additive intake tables. No existing production, delivery or document rows are changed by the schema upgrade.
+
+
+### Organization workflow defaults
+
+Organization admins open **Admin → Manage workflow defaults** to require approved requests and configure named manual checkpoints before packing/departure. Preview is unsaved; ERP and no-ERP examples both enable approved-request intake. The ERP example adds production confirmation before packing and a delivery/transfer reference before departure. Adapt these to the customer's actual process; they are not a universal SAP transaction sequence. A reason is required to save; updates recheck admin access, reject stale versions and audit before/after settings atomically.
+
+New tickets show the current policy and capture an immutable snapshot with its version. Checkpoints are copied to the existing delivery-gate tables in the same transaction as ticket creation. Subsequent changes affect only future tickets. Ticket creation rejects forms opened against an older policy, including direct submissions that omit the policy version once defaults have been configured. Existing tickets are not backfilled or changed. With no configured defaults, existing direct-ticket behavior remains available; no ERP checkpoints are inferred. Approved-request enforcement, when enabled, blocks direct ticket creation server-side. Custom intake still requires PDF/DXF readiness review in every configuration.
+
+At most 20 distinct checkpoint names (120 characters each) can be configured. Empty lists mean no additional ERP gates; inspection, physical packing and departure confirmations remain mandatory. Inherited gates are whole-ticket requirements and can delay partial serial shipment until the whole job is accepted; they do not implement per-shipment ERP transactions or automatically communicate with SAP. Planners/admins may still add ticket-specific requirements before the corresponding stage starts, within the total 20-checkpoint limit. Waivers, corrections and returns remain future audited workflows.
+
+Back up and run `init-db` before restart to add `workflow_defaults` and `ticket_workflow`. Existing configuration starts unchanged; no example policy is automatically enabled. No cloud deployment or migration is included.

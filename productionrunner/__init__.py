@@ -140,6 +140,8 @@ def create_app(config=None):
             abort(409, 'This ticket changed. Reload before submitting again.')
         return ticket
 
+    from .workflow_defaults import register_workflow_defaults, settings as workflow_settings, validate_ticket as validate_workflow, snapshot as snapshot_workflow
+    register_workflow_defaults(app, db, roles_required)
     from .intake import register_intake, approved_request, link_ticket, actor as intake_actor
     register_intake(app, db, roles_required, now)
     from .fulfillment import register_fulfillment
@@ -248,7 +250,7 @@ def create_app(config=None):
         intake_entry = approved_request(db(), g.tenant['id'], request_id) if request_id else None
         if request.method == 'GET':
             parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
-            return render_template('new.html', parts=parts, intake_entry=intake_entry)
+            return render_template('new.html', parts=parts, intake_entry=intake_entry, workflow=workflow_settings(db(), g.tenant['id']))
         pn = request.form.get('pn', '').strip()
         revision = request.form.get('revision', '').strip()
         part_id = intake_entry['part_id'] if intake_entry else request.form.get('part_revision_id', '')
@@ -279,15 +281,17 @@ def create_app(config=None):
             abort(400, 'Provide work instructions and 1–20 routing steps, at most 500 characters per step.')
         ticket_id = 'JR-' + secrets.token_hex(6).upper()
         with db():
+            db().execute('BEGIN IMMEDIATE')
+            intake_actor(db(), g.tenant['id'], g.user['id'], ('planner',))
+            workflow = validate_workflow(db(), g.tenant['id'], request.form.get('workflow_version'), intake_entry)
             if intake_entry:
-                db().execute('BEGIN IMMEDIATE')
-                intake_actor(db(), g.tenant['id'], g.user['id'], ('planner',))
                 if request.form.get('request_version') != str(intake_entry['version']):
                     abort(409, 'Request changed. Reopen the approved request.')
                 intake_entry = approved_request(db(), g.tenant['id'], request_id, str(intake_entry['version']))
             db().execute('INSERT INTO tickets(id,tenant_id,pn,revision,quantity,tracking,serials,instructions,state,created_by,created_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)',
                          (ticket_id, g.tenant['id'], pn, revision, quantity, tracking, json.dumps(serials), instructions, 'ready', g.user['id'], now()))
             db().execute('INSERT INTO ticket_dispatch VALUES(?,?,0)', (g.tenant['id'], ticket_id))
+            snapshot_workflow(db(), g.tenant['id'], ticket_id, g.user['id'], workflow, now(), event)
             for sequence, line in enumerate(route, 1):
                 name, _, detail = line.partition('|')
                 if not name.strip():
