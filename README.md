@@ -10,6 +10,13 @@ The agreed pilot layout is **Laser 1, Laser 2 and Packing**, each with a mini PC
 
 See [the installation plan and pilot acceptance procedure](docs/hardware.md) for equipment totals, document/revision handling, network and backup needs, and deployment work still outstanding.
 
+## Shop installation guides
+
+- [Server installation, HTTPS, startup, backups and recovery](docs/server-installation.md) — Windows and Ubuntu alternatives; server OS is not yet selected.
+- [Windows mini PC installation](docs/mini-pc-installation.md) — extended displays, separate browser profiles, printing, USB transfer and shift-start checks.
+
+These are deployment runbooks, not a claim that a shop server or unattended kiosk has been installed or qualified.
+
 ## Run locally
 
 Requires Python 3.12 or newer. No external database or cloud account is needed.
