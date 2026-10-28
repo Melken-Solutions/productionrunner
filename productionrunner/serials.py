@@ -66,12 +66,13 @@ def register_serials(app, db, roles_required, now):
         return unit
 
     def context(unit):
+        from .work_tracking import contributed
         ticket = db().execute('SELECT t.*, p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND t.id=?',
                               (unit['tenant_id'], unit['ticket_id'])).fetchone()
         operations = route(unit)
         return dict(unit=unit, ticket=ticket, operations=operations,
                     next_operation=next((o for o in operations if o['completed_by_unit'] is None), None),
-                    independent=all(o['completed_by_unit'] != g.user['id'] for o in operations))
+                    independent=all(o['completed_by_unit'] != g.user['id'] for o in operations) and not contributed(db(),unit['tenant_id'],unit['ticket_id'],unit['id'],g.user['id']))
 
     @app.get('/units/<unit_id>')
     @roles_required()
@@ -98,6 +99,9 @@ def register_serials(app, db, roles_required, now):
             operation = remaining[0]
             from .dispatch import require_dispatch, snapshot
             require_dispatch(db(), unit['tenant_id'], unit['ticket_id'], operation['id'])
+            from .work_tracking import finish_work
+            ticket=db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',(unit['tenant_id'],unit['ticket_id'])).fetchone()
+            finish_work(db(),unit['tenant_id'],ticket,operation,g.user['id'],now(),lambda tid,action,detail:unit_event(unit,action,detail),unit)
             db().execute('INSERT INTO unit_completions VALUES(?,?,?,?,?,?)',
                          (unit['tenant_id'], unit['ticket_id'], unit_id, operation['id'], g.user['id'], now()))
             update_unit_state(db(), unit, 'in_progress' if len(remaining) > 1 else 'awaiting_inspection')
@@ -114,6 +118,9 @@ def register_serials(app, db, roles_required, now):
             unit = lock_unit(unit_id)
             if unit['state'] != 'awaiting_inspection':
                 abort(409, 'Complete this unit’s route before inspection.')
+            from .work_tracking import contributed
+            if contributed(db(),unit['tenant_id'],unit['ticket_id'],unit_id,g.user['id']):
+                abort(403,'A station work contributor cannot inspect this unit.')
             if any(o['completed_by_unit'] == g.user['id'] for o in route(unit)):
                 abort(403, 'A production contributor cannot inspect this unit.')
             result, notes = request.form.get('result'), request.form.get('notes', '').strip()

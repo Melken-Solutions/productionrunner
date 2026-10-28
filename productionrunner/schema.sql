@@ -419,3 +419,44 @@ CREATE TRIGGER IF NOT EXISTS return_repair_units_no_update BEFORE UPDATE ON retu
 CREATE TRIGGER IF NOT EXISTS return_repair_units_no_delete BEFORE DELETE ON return_repair_units BEGIN SELECT RAISE(ABORT,'Repair links are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS return_closure_no_update BEFORE UPDATE ON return_closure_events BEGIN SELECT RAISE(ABORT,'Return closure evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS return_closure_no_delete BEFORE DELETE ON return_closure_events BEGIN SELECT RAISE(ABORT,'Return closure evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS work_settings (
+ tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id),required INTEGER NOT NULL CHECK(required IN (0,1)),version INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS work_reasons (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL REFERENCES tenants(id),name TEXT NOT NULL,
+ UNIQUE(tenant_id,name)
+);
+CREATE TABLE IF NOT EXISTS work_sessions (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,unit_id TEXT,operation_id INTEGER NOT NULL,
+ station_id INTEGER NOT NULL,station_name TEXT NOT NULL,mode TEXT NOT NULL CHECK(mode IN ('setup','production','machine')),
+ hot_priority INTEGER,created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,operation_id) REFERENCES operations(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,station_id) REFERENCES stations(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS work_events (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,session_id INTEGER NOT NULL,
+ action TEXT NOT NULL CHECK(action IN ('start','pause','resume','stop','finish')),actor_id INTEGER NOT NULL,
+ reason TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,session_id) REFERENCES work_sessions(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS work_events_owner ON work_events(tenant_id,id);
+CREATE INDEX IF NOT EXISTS work_events_session ON work_events(tenant_id,session_id,id);
+CREATE INDEX IF NOT EXISTS work_target ON work_sessions(tenant_id,ticket_id,unit_id,operation_id);
+CREATE TABLE IF NOT EXISTS work_time_corrections (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,event_id INTEGER NOT NULL,
+ effective_at TEXT NOT NULL,reason TEXT NOT NULL,actor_id INTEGER NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,event_id) REFERENCES work_events(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS work_correction_event ON work_time_corrections(tenant_id,event_id,id);
+CREATE TRIGGER IF NOT EXISTS work_sessions_no_update BEFORE UPDATE ON work_sessions BEGIN SELECT RAISE(ABORT,'Work evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS work_sessions_no_delete BEFORE DELETE ON work_sessions BEGIN SELECT RAISE(ABORT,'Work evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS work_events_no_update BEFORE UPDATE ON work_events BEGIN SELECT RAISE(ABORT,'Work evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS work_events_no_delete BEFORE DELETE ON work_events BEGIN SELECT RAISE(ABORT,'Work evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS work_corrections_no_update BEFORE UPDATE ON work_time_corrections BEGIN SELECT RAISE(ABORT,'Time corrections are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS work_corrections_no_delete BEFORE DELETE ON work_time_corrections BEGIN SELECT RAISE(ABORT,'Time corrections are immutable'); END;

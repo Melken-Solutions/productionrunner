@@ -47,6 +47,9 @@ def register_controls(app, db, roles_required, now, lock_ticket):
             abort(400, 'Confirm cancellation of this ticket and its remaining work.')
         with db():
             ticket = lock_ticket(ticket_id)
+            from .work_tracking import open_sessions
+            if any(s['ticket_id']==ticket_id for s in open_sessions(db(),g.tenant['id'])):
+                abort(409,'Stop station sessions before cancelling the ticket.')
             if db().execute('SELECT 1 FROM return_repairs WHERE tenant_id=? AND repair_ticket_id=?',(g.tenant['id'],ticket_id)).fetchone():
                 abort(409,'Linked return repair jobs cannot be cancelled; keep the return traceable.')
             if db().execute('SELECT 1 FROM fulfillment_records WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket_id)).fetchone():
@@ -91,6 +94,9 @@ def register_controls(app, db, roles_required, now, lock_ticket):
         return case
 
     def independent(case):
+        from .work_tracking import contributed
+        if contributed(db(),g.tenant['id'],case['ticket_id'],case['unit_id'],g.user['id']):
+            return False
         if case['unit_id']:
             original = db().execute('SELECT 1 FROM unit_completions WHERE tenant_id=? AND unit_id=? AND actor_id=?', (g.tenant['id'], case['unit_id'], g.user['id'])).fetchone()
         else:

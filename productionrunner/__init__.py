@@ -150,6 +150,8 @@ def create_app(config=None):
     register_returns(app, db, roles_required, now, lock_ticket, event)
     from .return_repairs import register_return_repairs
     register_return_repairs(app, db, roles_required, now, lock_ticket, event)
+    from .work_tracking import register_work_tracking, contributed
+    register_work_tracking(app, db, roles_required, now, event)
     from .tenancy import register_commands
     register_commands(app)
     from .branding import register_branding
@@ -320,7 +322,7 @@ def create_app(config=None):
         operations = db().execute('SELECT o.*, u.username FROM operations o LEFT JOIN users u ON u.id=o.completed_by WHERE ticket_id=? AND tenant_id=? ORDER BY sequence', (ticket_id, g.tenant['id'])).fetchall()
         events = db().execute('SELECT e.*, u.username FROM events e JOIN users u ON u.id=e.actor_id WHERE ticket_id=? AND e.tenant_id=? ORDER BY e.id', (ticket_id, g.tenant['id'])).fetchall()
         next_operation = next((o for o in operations if o['completed_by'] is None), None)
-        independent = all(o['completed_by'] != g.user['id'] for o in operations)
+        independent = all(o['completed_by'] != g.user['id'] for o in operations) and not contributed(db(),g.tenant['id'],ticket_id,None,g.user['id'])
         units = units_for(db(), g.tenant['id'], ticket_id)
         if units:
             return render_template('serial_ticket.html', ticket=ticket, units=units, operations=operations, events=events)
@@ -343,6 +345,8 @@ def create_app(config=None):
             require_dispatch(db(), g.tenant['id'], ticket_id, operation['id'])
             if request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm that the entire batch completed this operation.')
+            from .work_tracking import finish_work
+            finish_work(db(),g.tenant['id'],ticket,operation,g.user['id'],now(),event)
             db().execute('UPDATE operations SET completed_by=?, completed_at=? WHERE id=? AND tenant_id=?', (g.user['id'], now(), operation['id'], g.tenant['id']))
             remaining = db().execute('SELECT COUNT(*) FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by IS NULL', (ticket_id, g.tenant['id'])).fetchone()[0]
             state = 'in_progress' if remaining else 'awaiting_inspection'
@@ -362,6 +366,9 @@ def create_app(config=None):
                 abort(409, 'Use the individual unit traveler for production and inspection.')
             if ticket['state'] != 'awaiting_inspection':
                 abort(409, 'Complete all production operations before inspection.')
+            from .work_tracking import contributed
+            if contributed(db(),g.tenant['id'],ticket_id,None,g.user['id']):
+                abort(403,'A station work contributor cannot inspect this batch.')
             if db().execute('SELECT 1 FROM operations WHERE ticket_id=? AND tenant_id=? AND completed_by=?', (ticket_id, g.tenant['id'], g.user['id'])).fetchone():
                 abort(403, 'Independent inspection requires someone who performed none of this ticket’s production operations.')
             result, notes = request.form.get('result'), request.form.get('notes', '').strip()

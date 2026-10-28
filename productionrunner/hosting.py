@@ -13,7 +13,7 @@ REQUIRED_TABLES = ('users', 'tenants', 'memberships', 'tickets', 'operations', '
                    'serial_units', 'part_revisions', 'part_dxf', 'organization_branding',
                    'stations', 'operation_assignments', 'ticket_dispatch', 'developer_accounts',
                    'storage_policies', 'storage_file_controls', 'part_imports', 'fulfillment_records', 'fulfillment_units',
-                   'return_repairs', 'return_repair_units', 'return_closure_events', 'customer_returns', 'customer_return_units', 'customer_return_reviews', 'fulfillment_reversals', 'fulfillment_unit_entries', 'fulfillment_checks', 'fulfillment_check_results', 'intake_requests', 'intake_events', 'workflow_defaults', 'ticket_workflow')
+                   'work_settings', 'work_reasons', 'work_sessions', 'work_events', 'work_time_corrections', 'return_repairs', 'return_repair_units', 'return_closure_events', 'customer_returns', 'customer_return_units', 'customer_return_reviews', 'fulfillment_reversals', 'fulfillment_unit_entries', 'fulfillment_checks', 'fulfillment_check_results', 'intake_requests', 'intake_events', 'workflow_defaults', 'ticket_workflow')
 
 
 def configure(app):

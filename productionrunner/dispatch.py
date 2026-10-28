@@ -115,6 +115,9 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
         with db():
             ticket=lock_ticket(ticket_id)
             check_actor({'planner','admin'})
+            from .work_tracking import open_sessions
+            if any(s['operation_id']==operation_id for s in open_sessions(db(),g.tenant['id'])):
+                abort(409,'Stop station sessions before reassigning this operation.')
             op=db().execute('SELECT * FROM operations WHERE tenant_id=? AND ticket_id=? AND id=?',(g.tenant['id'],ticket_id,operation_id)).fetchone()
             if not op: abort(404,'Unknown operation.')
             count=db().execute('SELECT COUNT(*) FROM serial_units WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id)).fetchone()[0]
