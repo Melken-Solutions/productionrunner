@@ -497,3 +497,13 @@ CREATE TRIGGER IF NOT EXISTS outside_moves_no_update BEFORE UPDATE ON outside_mo
 CREATE TRIGGER IF NOT EXISTS outside_moves_no_delete BEFORE DELETE ON outside_moves BEGIN SELECT RAISE(ABORT,'Outside processing evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS outside_inspections_no_update BEFORE UPDATE ON outside_inspections BEGIN SELECT RAISE(ABORT,'Outside processing evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS outside_inspections_no_delete BEFORE DELETE ON outside_inspections BEGIN SELECT RAISE(ABORT,'Outside processing evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS request_outside (
+ tenant_id INTEGER NOT NULL,request_id TEXT PRIMARY KEY,
+ vendor TEXT NOT NULL,service TEXT NOT NULL,instructions TEXT NOT NULL,
+ inspection_requirements TEXT NOT NULL,due_date TEXT NOT NULL,reference TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,request_id) REFERENCES intake_requests(tenant_id,id)
+);
+CREATE TRIGGER IF NOT EXISTS request_outside_frozen_insert BEFORE INSERT ON request_outside WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=NEW.tenant_id AND id=NEW.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled outside plans are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_outside_frozen_update BEFORE UPDATE ON request_outside WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled outside plans are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_outside_frozen_delete BEFORE DELETE ON request_outside WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled outside plans are immutable'); END;

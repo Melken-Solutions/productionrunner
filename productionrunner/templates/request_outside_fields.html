@@ -1,0 +1,9 @@
+{% set outside=request_outside(entry.id) if entry else none %}
+<fieldset class="card"><legend>Outside processing</legend>
+<label class="check"><input type="checkbox" name="outside_required" value="yes" {% if outside %}checked{% endif %}>This job needs work at another shop (powder coating, welding, etc.)</label>
+<p>When selected, complete the vendor plan below. It will carry forward to the JobRunner; sending parts to a vendor is separate from final customer delivery.</p>
+<div class="grid"><label>Outside vendor<input name="outside_vendor" maxlength="200" value="{{ outside.vendor if outside else '' }}"></label><label>Outside service<input name="outside_service" maxlength="200" placeholder="Powder coating" value="{{ outside.service if outside else '' }}"></label></div>
+<label>Outside work instructions<textarea name="outside_instructions" maxlength="4000" rows="3">{{ outside.instructions if outside else '' }}</textarea></label>
+<label>Outside return inspection requirements<textarea name="outside_inspection_requirements" maxlength="4000" rows="3">{{ outside.inspection_requirements if outside else '' }}</textarea></label>
+<div class="grid"><label>Outside expected return date (UTC)<input type="date" name="outside_due_date" value="{{ outside.due_date if outside else '' }}"></label><label>Outside PO / reference (optional)<input name="outside_reference" maxlength="200" value="{{ outside.reference if outside else '' }}"></label></div>
+</fieldset>

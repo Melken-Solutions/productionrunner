@@ -374,3 +374,18 @@ request and links it atomically to exactly one ticket. This also applies to new
 repair JobRunners. Admin workflow settings cannot disable the request requirement,
 including old saved settings that previously permitted direct creation. Existing
 tickets, request links and immutable workflow snapshots remain unchanged.
+
+Outside processing can now be planned directly on **New production request**
+(or **Edit request**). Select the outside-work checkbox and enter one vendor/service
+plan, expected return date, work instructions, return inspection requirements and
+optional PO/reference. Changing or removing this plan invalidates request approval
+and is recorded in request history. When creating a production or repair JobRunner,
+include the vendor operation in the route and specify its step number. The server
+requires that mapping and copies the approved plan atomically; it cannot silently
+omit vendor work. Existing requests without a plan retain their previous behavior.
+Additional vendor steps can still be configured on the unreleased JobRunner.
+
+Every ticket in the production queue now has an **Outside processing** link,
+regardless of whether a vendor plan exists. Ticket views also have a prominent
+Outside processing section. Existing released tickets remain viewable, but their
+routing plans cannot be rewritten after release.

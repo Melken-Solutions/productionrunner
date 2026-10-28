@@ -5,6 +5,7 @@ import secrets
 from datetime import date
 from flask import abort, g, redirect, render_template, request, session, url_for
 from .admin import epoch
+from .request_outside import get_plan, parse as outside_fields, save as save_outside
 
 SOURCES = ('manual', 'po', 'erp', 'email', 'smartsheet', 'other')
 EDIT_FIELDS = ('item_type', 'source', 'source_reference', 'requester', 'destination', 'required_date', 'pn', 'revision', 'quantity', 'description')
@@ -62,7 +63,7 @@ def document_state(conn, tenant, row):
 def register_intake(app, db, roles_required, now):
     @app.context_processor
     def intake_context():
-        return dict(request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
+        return dict(request_outside=lambda rid:get_plan(db(),g.tenant['id'],rid), request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
 
     def fields():
         data = {key: request.form.get(key, '').strip() for key in EDIT_FIELDS}
@@ -112,12 +113,14 @@ def register_intake(app, db, roles_required, now):
         if request.method == 'GET':
             return render_template('intake_form.html', entry=None, parts=choices(), sources=SOURCES)
         data = fields()
+        outside = outside_fields(request.form)
         rid = 'REQ-' + secrets.token_hex(6).upper()
         with db():
             db().execute('BEGIN IMMEDIATE')
             actor(db(), g.tenant['id'], g.user['id'])
             db().execute('INSERT INTO intake_requests(id,tenant_id,' + ','.join(EDIT_FIELDS) + ',created_by,created_at) VALUES(' + ','.join('?' for _ in range(len(EDIT_FIELDS)+4)) + ')', (rid, g.tenant['id'], *(data[k] for k in EDIT_FIELDS), g.user['id'], now()))
-            log(db(), g.tenant['id'], g.user['id'], rid, 'request_received', data, now())
+            save_outside(db(), g.tenant['id'], rid, outside)
+            log(db(), g.tenant['id'], g.user['id'], rid, 'request_received', dict(data, outside_processing=outside), now())
         return redirect(url_for('intake_detail', rid=rid))
 
     @app.get('/requests/<rid>')
@@ -137,6 +140,7 @@ def register_intake(app, db, roles_required, now):
                 abort(409, 'Converted or cancelled requests cannot be edited.')
             return render_template('intake_form.html', entry=row, parts=choices(), sources=SOURCES)
         data, why = fields(), reason()
+        outside = outside_fields(request.form)
         with db():
             db().execute('BEGIN IMMEDIATE')
             actor(db(), g.tenant['id'], g.user['id'])
@@ -144,9 +148,11 @@ def register_intake(app, db, roles_required, now):
             if row['status'] in {'ticketed', 'cancelled'} or str(row['version']) != request.form.get('version'):
                 abort(409, 'Request changed or cannot be edited. Reload it.')
             before = {key: row[key] for key in EDIT_FIELDS}
-            if before != data:
+            previous_outside=get_plan(db(),g.tenant['id'],rid)
+            if before != data or previous_outside != outside:
                 db().execute('UPDATE intake_requests SET ' + ','.join(key+'=?' for key in EDIT_FIELDS) + ",status='preparing',part_id=NULL,approved_by=NULL,approved_at=NULL,version=version+1 WHERE tenant_id=? AND id=?", (*(data[k] for k in EDIT_FIELDS), g.tenant['id'], rid))
-                log(db(), g.tenant['id'], g.user['id'], rid, 'request_edited', dict(before=before, after=data, reason=why, approval_invalidated=row['status']=='approved'), now())
+                save_outside(db(),g.tenant['id'],rid,outside)
+                log(db(), g.tenant['id'], g.user['id'], rid, 'request_edited', dict(before=dict(before,outside_processing=previous_outside), after=dict(data,outside_processing=outside), reason=why, approval_invalidated=row['status']=='approved'), now())
         return redirect(url_for('intake_detail', rid=rid))
 
     @app.post('/requests/<rid>/decision')

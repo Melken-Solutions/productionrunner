@@ -80,6 +80,8 @@ def register_return_repairs(app,db,roles_required,now,lock_ticket,event):
                 for seq,line in enumerate(route,1):
                     name,_,detail=line.partition('|')
                     db().execute('INSERT INTO operations(tenant_id,ticket_id,sequence,name,instructions) VALUES(?,?,?,?,?)',(g.tenant['id'],tid,seq,name.strip(),detail.strip() or instructions))
+                from .request_outside import apply as apply_requested_outside
+                apply_requested_outside(db(),g.tenant['id'],req['id'],tid,request.form.get('outside_sequence'),event)
                 create_units(db(),g.tenant['id'],tid,serials)
                 db().execute('INSERT INTO ticket_drawings VALUES(?,?,?)',(g.tenant['id'],tid,part['id']))
                 db().execute('INSERT INTO return_repairs VALUES(?,?,?,?,?,?,?)',(g.tenant['id'],ticket_id,return_id,tid,g.user['id'],reason,stamp))

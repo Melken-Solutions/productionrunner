@@ -313,6 +313,8 @@ def create_app(config=None):
                     abort(400, 'Each operation needs a name.')
                 db().execute('INSERT INTO operations(tenant_id,ticket_id,sequence,name,instructions) VALUES(?,?,?,?,?)',
                              (g.tenant['id'], ticket_id, sequence, name.strip(), detail.strip() or instructions))
+            from .request_outside import apply as apply_requested_outside
+            apply_requested_outside(db(),g.tenant['id'],request_id,ticket_id,request.form.get('outside_sequence'),event)
             if tracking == 'serial':
                 create_units(db(), g.tenant['id'], ticket_id, serials)
             if part:
