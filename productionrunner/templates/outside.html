@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% macro hidden(ticket) %}<input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ ticket.version }}">{% endmacro %}
+{% macro amount(units) %}{% if units %}<label>Exact serial numbers (one per line)<textarea name="serials" required rows="3"></textarea></label>{% else %}<label>Quantity<input name="quantity" type="number" min="1" required></label>{% endif %}{% endmacro %}
+{% block content %}
+<p><a href="{{ url_for('ticket_detail',ticket_id=ticket.id) }}">← Job ticket</a> · <a href="{{ url_for('route_assignments',ticket_id=ticket.id) }}">Routing assignments &amp; release</a></p>
+<h1>Outside processing</h1><p>{{ ticket.id }} · {{ ticket.pn }} · Revision {{ ticket.revision }} · {{ ticket.quantity }} units</p>
+<p>Planner: configure a routing step below before releasing the job. Vendor shipments keep this job open; they are not final customer delivery. Attach the job’s approved drawing and these service instructions to the shipment.</p>
+{% if units %}<details><summary>Ticket serial numbers</summary>{% for u in units %}<p>{{ u.serial }} · {{ u.state|replace('_',' ') }}</p>{% endfor %}</details>{% endif %}
+{% set can_move='operator' in g.roles or 'planner' in g.roles or 'admin' in g.roles %}
+{% for op in operations %}{% set plan=outside_step(op) %}
+<section class="card"><h2>{{ op.sequence }}. {{ op.name }}</h2>
+{% if not dispatch_released(ticket) and ('planner' in g.roles or 'admin' in g.roles) %}
+<details {% if plan %}open{% endif %}><summary>{{ 'Edit outside processing plan' if plan else 'Make this an outside processing step' }}</summary>
+<form method="post" class="stack" action="{{ url_for('outside_plan',ticket_id=ticket.id,operation_id=op.id) }}">{{ hidden(ticket) }}
+<label>Vendor<input name="vendor" required maxlength="200" value="{{ plan.vendor if plan else '' }}"></label>
+<label>Service (powder coating, welding, etc.)<input name="service" required maxlength="200" value="{{ plan.service if plan else '' }}"></label>
+<label>Vendor work instructions<textarea name="instructions" required maxlength="4000">{{ plan.instructions if plan else op.instructions }}</textarea></label>
+<label>Return inspection requirements<textarea name="inspection_requirements" required maxlength="4000">{{ plan.inspection_requirements if plan else '' }}</textarea></label>
+<label>Expected return date (UTC)<input name="due_date" type="date" required value="{{ plan.due_date if plan else '' }}"></label>
+<label>PO / reference (optional)<input name="reference" maxlength="200" value="{{ plan.reference if plan else '' }}"></label>
+<button>Save outside processing plan</button></form>{% if plan %}<form method="post" action="{{ url_for('outside_plan',ticket_id=ticket.id,operation_id=op.id) }}">{{ hidden(ticket) }}<input type="hidden" name="mode" value="internal"><button class="secondary">Change back to internal operation</button></form>{% endif %}</details>{% endif %}
+{% if plan %}
+<p><strong>{{ plan.vendor }} · {{ plan.service }}</strong> · Expected back {{ plan.due_date }} (UTC) · Reference {{ plan.reference or 'Not provided' }}</p>
+<p class="preserve">{{ plan.instructions }}</p><h3>Return acceptance criteria</h3><p class="preserve">{{ plan.inspection_requirements }}</p>
+<p class="alert">{{ outside_status(op) }}</p>
+{% set records=ledger(op) %}
+{% if dispatch_released(ticket) and can_move %}
+<details><summary>Send parts to vendor</summary><form method="post" class="stack" action="{{ url_for('outside_action',ticket_id=ticket.id,operation_id=op.id,action='send') }}">{{ hidden(ticket) }}{{ amount(units) }}<label>Shipment / carrier / tracking reference and notes<textarea name="notes" required maxlength="4000"></textarea></label><button>Record sent to vendor</button></form></details>{% endif %}
+{% for m in records if m.kind=='send' %}
+<section class="card"><h3>Shipment #{{ m.id }} · {{ m.quantity }} sent · {{ m.received }} returned</h3><p>{{ m.created_at }} · {{ m.username }} · {{ m.elapsed_days }} calendar days {{ 'turnaround' if m.quantity==m.received else 'elapsed' }}</p><p class="preserve">{{ m.notes }}</p>
+{% if m.units %}<p>Serials: {% for u in units if u.id in m.units %}{{ u.serial }} {% endfor %}</p>{% endif %}
+{% if m.quantity>m.received and can_move %}<details><summary>Receive parts from this shipment</summary><form method="post" class="stack" action="{{ url_for('outside_action',ticket_id=ticket.id,operation_id=op.id,action='receive') }}">{{ hidden(ticket) }}<input type="hidden" name="shipment_id" value="{{ m.id }}">{{ amount(units) }}<label>Receiving notes / condition / discrepancies<textarea name="notes" required maxlength="4000"></textarea></label><button>Record received — awaiting inspection</button></form></details>{% endif %}
+{% for r in records if r.parent_id==m.id %}<section class="card"><h4>Receipt #{{ r.id }} · {{ r.quantity }} returned</h4><p>{{ r.created_at }} · {{ r.username }}</p><p class="preserve">{{ r.notes }}</p>{% if r.units %}<p>Serials: {% for u in units if u.id in r.units %}{{ u.serial }} {% endfor %}</p>{% endif %}
+{% if r.inspection %}<p><strong>{{ 'Accepted' if r.inspection.result=='pass' else 'HOLD — rejected' }}</strong> · {{ r.inspection.username }} · {{ r.inspection.created_at }}</p><p class="preserve">{{ r.inspection.notes }}</p>{% else %}<p>Awaiting independent inspection</p>{% endif %}
+{% if 'inspector' in g.roles and (not r.inspection or r.inspection.result=='fail') %}<form method="post" class="stack" action="{{ url_for('outside_action',ticket_id=ticket.id,operation_id=op.id,action='inspect') }}">{{ hidden(ticket) }}<input type="hidden" name="receipt_id" value="{{ r.id }}"><label>Inspection result for this entire receipt<select name="result"><option value="fail">Fail — keep on hold</option><option value="pass">Pass — accept</option></select></label><label>Measurements / evidence{% if r.inspection %} and reason for reinspection{% endif %}<textarea name="notes" required maxlength="4000"></textarea></label><button>Record independent inspection</button></form>{% endif %}
+</section>{% endfor %}</section>{% endfor %}
+{% else %}<p>Internal operation — assign a station in Routing assignments.</p>{% endif %}</section>{% endfor %}
+<p>Partial receipts are supported. Each receipt is inspected as a whole; record separate receipts when groups need separate inspection decisions. Rejected parts remain blocked until a documented independent reinspection passes. Vendor reshipments, scrap dispositions and custody corrections are not yet supported; do not use receipt records to represent goods that have not physically returned.</p>
+{% endblock %}

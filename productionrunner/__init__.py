@@ -162,6 +162,8 @@ def create_app(config=None):
     register_storage(app, db, roles_required)
     from .admin import register_admin
     register_admin(app, db, roles_required)
+    from .outside_processing import register_outside
+    register_outside(app, db, roles_required, now, lock_ticket, event)
     from .dispatch import register_dispatch
     register_dispatch(app, db, roles_required, now, lock_ticket, event)
     from .tv_boards import register_tv
@@ -345,6 +347,8 @@ def create_app(config=None):
             if not operation or request.form.get('operation_id') != str(operation['id']):
                 abort(409, 'Only the next routing operation can be completed.')
             from .dispatch import require_dispatch, snapshot
+            from .outside_processing import require_internal
+            require_internal(db(), g.tenant['id'], operation['id'])
             require_dispatch(db(), g.tenant['id'], ticket_id, operation['id'])
             if request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm that the entire batch completed this operation.')

@@ -47,6 +47,8 @@ def register_controls(app, db, roles_required, now, lock_ticket):
             abort(400, 'Confirm cancellation of this ticket and its remaining work.')
         with db():
             ticket = lock_ticket(ticket_id)
+            if db().execute('SELECT 1 FROM outside_moves WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id)).fetchone():
+                abort(409,'Tickets with outside processing custody evidence cannot be cancelled.')
             from .work_tracking import open_sessions
             if any(s['ticket_id']==ticket_id for s in open_sessions(db(),g.tenant['id'])):
                 abort(409,'Stop station sessions before cancelling the ticket.')

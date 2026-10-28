@@ -32,6 +32,9 @@ def open_sessions(conn,tenant):
 
 
 def contributed(conn,tenant,tid,uid,user):
+    # Custody handlers cannot independently inspect their own outside work.
+    for move in conn.execute('SELECT unit_ids FROM outside_moves WHERE tenant_id=? AND ticket_id=? AND actor_id=?',(tenant,tid,user)):
+        if uid is None or uid in json.loads(move['unit_ids']):return True
     return conn.execute("SELECT 1 FROM work_sessions s JOIN work_events e ON e.tenant_id=s.tenant_id AND e.session_id=s.id WHERE s.tenant_id=? AND s.ticket_id=? AND s.unit_id IS ? AND e.actor_id=? AND e.action IN ('start','resume')",(tenant,tid,uid,user)).fetchone() is not None
 
 
@@ -126,6 +129,8 @@ def register_work_tracking(app,db,roles_required,now,event):
                 current=unit if unit else ticket
                 if request.form.get('version')!=str(current['version']):abort(409,'Traveler changed. Reload.')
                 if not op or current['state'] not in {'ready','in_progress'}:abort(409,'No production operation is available.')
+                from .outside_processing import require_internal
+                require_internal(db(),g.tenant['id'],op['id'])
                 require_dispatch(db(),g.tenant['id'],ticket['id'],op['id'])
                 a=assignment(db(),g.tenant['id'],op['id'])
                 if not a:abort(409,'Assign this operation to a station first.')

@@ -3,6 +3,7 @@ from collections import defaultdict
 from flask import abort,g,jsonify,render_template,request,redirect,url_for
 from .dispatch import released
 from .fulfillment import progress
+from .outside_processing import step as outside_step, status as outside_status
 
 
 def board_data(conn,tenant_id,station_id=None):
@@ -40,6 +41,8 @@ def board_data(conn,tenant_id,station_id=None):
                 stages['HOLD · '+((focus['station_name'] or 'Unassigned') if focus else 'No route')]+=amount
             elif not is_released:
                 stages['Awaiting planner release']+=amount
+            elif current and outside_step(conn,tenant_id,current['id']):
+                stages[outside_status(conn,tenant_id,current['id'],target['id'])]+=amount
             elif current:
                 ready+=amount
                 stages[(current['station_name'] or 'Unassigned')+' · '+current['name']]+=amount

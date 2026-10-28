@@ -97,6 +97,8 @@ def register_serials(app, db, roles_required, now):
             if request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm completion for this individual unit.')
             operation = remaining[0]
+            from .outside_processing import require_internal
+            require_internal(db(), unit['tenant_id'], operation['id'])
             from .dispatch import require_dispatch, snapshot
             require_dispatch(db(), unit['tenant_id'], unit['ticket_id'], operation['id'])
             from .work_tracking import finish_work

@@ -466,3 +466,34 @@ CREATE TABLE IF NOT EXISTS jobrunner_sequences (
  day TEXT PRIMARY KEY,
  sequence INTEGER NOT NULL CHECK(sequence >= 0)
 );
+
+CREATE TABLE IF NOT EXISTS outside_steps (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,operation_id INTEGER PRIMARY KEY,
+ vendor TEXT NOT NULL,service TEXT NOT NULL,instructions TEXT NOT NULL,inspection_requirements TEXT NOT NULL,due_date TEXT NOT NULL,reference TEXT NOT NULL,
+ UNIQUE(tenant_id,ticket_id,operation_id),
+ FOREIGN KEY(tenant_id,ticket_id,operation_id) REFERENCES operations(tenant_id,ticket_id,id)
+);
+CREATE TABLE IF NOT EXISTS outside_moves (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,operation_id INTEGER NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN ('send','receive')),parent_id INTEGER,
+ quantity INTEGER NOT NULL CHECK(quantity>0),unit_ids TEXT NOT NULL,actor_id INTEGER NOT NULL,notes TEXT NOT NULL,created_at TEXT NOT NULL,
+ CHECK((kind='send' AND parent_id IS NULL) OR (kind='receive' AND parent_id IS NOT NULL)),
+ UNIQUE(tenant_id,ticket_id,id),UNIQUE(tenant_id,ticket_id,operation_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,operation_id) REFERENCES outside_steps(tenant_id,ticket_id,operation_id),
+ FOREIGN KEY(tenant_id,ticket_id,operation_id,parent_id) REFERENCES outside_moves(tenant_id,ticket_id,operation_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS outside_moves_operation ON outside_moves(tenant_id,operation_id,id);
+CREATE TABLE IF NOT EXISTS outside_inspections (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,receipt_id INTEGER NOT NULL,
+ result TEXT NOT NULL CHECK(result IN ('pass','fail')),actor_id INTEGER NOT NULL,notes TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,receipt_id) REFERENCES outside_moves(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS outside_inspection_receipt ON outside_inspections(tenant_id,receipt_id,id);
+CREATE TRIGGER IF NOT EXISTS outside_steps_frozen_update BEFORE UPDATE ON outside_steps WHEN EXISTS(SELECT 1 FROM outside_moves WHERE operation_id=OLD.operation_id) BEGIN SELECT RAISE(ABORT,'Outside plans with custody evidence are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS outside_steps_frozen_delete BEFORE DELETE ON outside_steps WHEN EXISTS(SELECT 1 FROM outside_moves WHERE operation_id=OLD.operation_id) BEGIN SELECT RAISE(ABORT,'Outside plans with custody evidence are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS outside_moves_no_update BEFORE UPDATE ON outside_moves BEGIN SELECT RAISE(ABORT,'Outside processing evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS outside_moves_no_delete BEFORE DELETE ON outside_moves BEGIN SELECT RAISE(ABORT,'Outside processing evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS outside_inspections_no_update BEFORE UPDATE ON outside_inspections BEGIN SELECT RAISE(ABORT,'Outside processing evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS outside_inspections_no_delete BEFORE DELETE ON outside_inspections BEGIN SELECT RAISE(ABORT,'Outside processing evidence is immutable'); END;

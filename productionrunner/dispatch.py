@@ -120,6 +120,8 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
                 abort(409,'Stop station sessions before reassigning this operation.')
             op=db().execute('SELECT * FROM operations WHERE tenant_id=? AND ticket_id=? AND id=?',(g.tenant['id'],ticket_id,operation_id)).fetchone()
             if not op: abort(404,'Unknown operation.')
+            from .outside_processing import require_internal
+            require_internal(db(),g.tenant['id'],operation_id)
             count=db().execute('SELECT COUNT(*) FROM serial_units WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id)).fetchone()[0]
             done=db().execute('SELECT COUNT(*) FROM unit_completions WHERE tenant_id=? AND operation_id=?',(g.tenant['id'],operation_id)).fetchone()[0]
             if op['completed_by'] or (count and done==count): abort(409,'This operation is completed. Its assignment history is preserved.')
@@ -143,8 +145,8 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
             ticket=lock_ticket(ticket_id)
             check_actor({'planner','admin'})
             if released(db(),g.tenant['id'],ticket_id): abort(409,'Ticket is already released or is an existing legacy traveler.')
-            missing=db().execute('SELECT 1 FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id WHERE o.tenant_id=? AND o.ticket_id=? AND (s.id IS NULL OR s.active=0)',(g.tenant['id'],ticket_id)).fetchone()
-            if missing: abort(409,'Assign an active station to every routing step before release.')
+            missing=db().execute('SELECT 1 FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id WHERE o.tenant_id=? AND o.ticket_id=? AND NOT EXISTS(SELECT 1 FROM outside_steps x WHERE x.tenant_id=o.tenant_id AND x.operation_id=o.id) AND (s.id IS NULL OR s.active=0)',(g.tenant['id'],ticket_id)).fetchone()
+            if missing: abort(409,'Assign an active station to every internal routing step before release.')
             db().execute('UPDATE ticket_dispatch SET released=1 WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id))
             db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?',(g.tenant['id'],ticket_id))
             event(ticket_id,'ticket_released',why)

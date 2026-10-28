@@ -321,3 +321,44 @@ atomically, including concurrent planner requests. Failed transactions do not
 consume a number. Existing ticket IDs and their links/barcodes remain unchanged;
 existing IDs are reserved to avoid collisions. Independent serial-unit travelers
 retain their `JR-U-` IDs and link to the readable parent JobRunner ID.
+
+### Planner-defined outside processing
+
+Before releasing a new job, include vendor work as a routing line (for example
+`Powder coat | Apply finish per drawing`). Open **Outside processing** from the
+job or Routing assignments and configure that line with the vendor, service,
+work instructions, return inspection requirements, expected return date (UTC),
+and optional PO/reference. Internal operations require stations; vendor operations
+require an outside plan instead. Plans can be edited or changed back to internal
+before release and are locked afterwards.
+
+Planners, admins and operators may record physical sends and receipts, including
+partial quantities and exact serial numbers. Prior routing operations must be
+complete before sending. Each serial can be sent once per outside operation;
+receipts must match an outstanding shipment. Receipt notes capture shipping
+references, condition and discrepancies. Send/receive records and inspection
+records are immutable, actor-attributed, tenant-scoped and audited atomically.
+Custody handlers and production contributors cannot independently inspect their
+own work. An inspector records acceptance criteria evidence for each receipt;
+failed receipts stay blocked, with append-only reinspection evidence permitted.
+
+An accepted receipt advances its serial units individually. A batch advances
+only when its entire quantity has returned and passed inspection. Normal station
+completion and timing cannot bypass a vendor step. Outside completion attribution
+uses the sending user as custody owner; the actual accepting inspector is separately
+recorded in the outside ledger and audit history. Final production inspection and
+customer packing/departure controls still apply. Sending to a vendor never writes
+a customer departure. Jobs with custody evidence cannot be cancelled.
+
+The planner queue, job/serial views and floor TV show vendor custody, expected
+return dates, overdue returns and inspection holds. The outside ledger shows
+calendar days from sending until the final physical receipt (or elapsed days while
+outstanding), separate from internal labor. This is shipment turnaround, not
+inspection acceptance time or a supplier performance report.
+
+Initial scope: configure before release, one vendor per routing step, receive and
+inspect each receipt as a whole. For mixed inspection outcomes, record separate
+physical receipt groups before inspecting them. Vendor reshipment/rework loops,
+scrap/shortage disposition, custody corrections, vendor directory/PO integration,
+and aggregate supplier performance reports are follow-up work. Missing quantities
+stay outstanding; never record a fictitious receipt to close a shortage.
