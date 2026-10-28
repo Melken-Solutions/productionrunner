@@ -8,8 +8,8 @@ from .pin_auth import audit
 def settings(conn, tenant):
     row = conn.execute('SELECT * FROM workflow_defaults WHERE tenant_id=?', (tenant,)).fetchone()
     if not row:
-        return dict(version=0, require_intake=False, checks=[])
-    return dict(version=row['version'], require_intake=bool(row['require_intake']), checks=json.loads(row['checks']))
+        return dict(version=0, require_intake=True, checks=[])
+    return dict(version=row['version'], require_intake=True, checks=json.loads(row['checks']))
 
 
 def validate_ticket(conn, tenant, submitted_version, intake_entry):
@@ -17,8 +17,8 @@ def validate_ticket(conn, tenant, submitted_version, intake_entry):
     # Older clients remain compatible only while the organization has never configured defaults.
     if submitted_version != str(policy['version']) and not (policy['version']==0 and submitted_version is None):
         abort(409, 'Organization workflow changed. Reload ticket creation to review its requirements.')
-    if policy['require_intake'] and not intake_entry:
-        abort(409, 'This organization requires an approved manufacturing request. Start in Requests.')
+    if not intake_entry:
+        abort(409, 'Every new JobRunner requires an approved production request. Start in Requests.')
     return policy
 
 
@@ -59,7 +59,7 @@ def register_workflow_defaults(app, db, roles_required):
                     checks.extend(dict(name=name,stage=stage) for name in names)
                 if len(checks)>20 or len({c['name'].casefold() for c in checks})!=len(checks):
                     abort(400,'Use at most 20 distinct checkpoint names across both stages.')
-                proposed=dict(require_intake=request.form.get('require_intake')=='1',checks=checks)
+                proposed=dict(require_intake=True,checks=checks)
             if action == 'save':
                 reason=request.form.get('reason','').strip()
                 if not 1<=len(reason)<=500:

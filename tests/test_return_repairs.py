@@ -18,9 +18,17 @@ def returned_job(app):
     return c,tid,rid
 
 
-def repair(app,c,tid,rid,**kw):
+def repair(app,c,tid,rid,auto_request=True,**kw):
     data=dict(version=version(app,tid),workflow_version='0',confirm='yes',reason='Repair approved',instructions='Restore edges and verify drawing tolerances',route='Repair | Straighten edges')
     data.update(kw)
+    from test_workflow import planner_session
+    if auto_request and planner_session(c) and 'request_id' not in data:
+        from test_workflow import approved_inputs
+        original=rows(app,'SELECT * FROM tickets WHERE id=?',(tid,))[0]
+        returned=rows(app,'SELECT quantity FROM customer_returns WHERE id=?',(rid,))[0]
+        response,fields=approved_inputs(c,dict(pn=original['pn'],revision=original['revision'],quantity=returned['quantity']))
+        if response is not None:return response
+        data.update(fields)
     return post(c,f'/tickets/{tid}/returns/{rid}/repair',**data)
 
 
@@ -94,7 +102,7 @@ def test_repair_requires_planner_disposition_drawing_and_matching_policy(app):
     sign_in(c,'admin');assert save(c,require_intake='1').status_code==302
     sign_in(c,'planner')
     assert repair(app,c,tid,rid).status_code==409
-    assert repair(app,c,tid,rid,workflow_version='1').status_code==409
+    assert repair(app,c,tid,rid,auto_request=False,workflow_version='1').status_code==409
     from test_intake import receive as intake,decision
     req=intake(c).location.split('/')[-1];assert decision(app,c,req).status_code==302
     assert repair(app,c,tid,rid,workflow_version='1',request_id=req).status_code==302

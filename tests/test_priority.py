@@ -39,7 +39,7 @@ def test_invalid_priority_does_not_write(app, rank):
     client, ids = setup_queue(app)
     assert priority(client, ids[0], rank).status_code == 400
     assert not rows(app, 'SELECT * FROM ticket_priorities')
-    assert len(rows(app, 'SELECT * FROM events')) == 3
+    assert len(rows(app, 'SELECT * FROM events')) == 9  # Creation, drawing, request per job.
 
 
 def test_permissions_tenant_csrf_and_stale_change(app):

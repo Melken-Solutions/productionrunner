@@ -32,9 +32,41 @@ def post(client, path, **data):
     return client.post(path, data=data)
 
 
-def create_ticket(client, legacy=True, **overrides):
+def approved_inputs(client, data):
+    """Exercise the real request/document approval path for downstream fixtures."""
+    from test_parts import add_part
+    with client.session_transaction() as session:
+        tenant = session.get('tenant_id')
+    pn, revision = data.get('pn','PN-001'), data.get('revision','A')
+    if data.get('part_revision_id'):
+        found=rows(client.application,'SELECT * FROM part_revisions WHERE tenant_id=? AND id=?',(tenant,data['part_revision_id']))
+        if not found:return client.get('/parts/'+data['part_revision_id']), None
+        pn,revision=found[0]['pn'],found[0]['revision']
+    response=post(client,'/requests/new',item_type='standard',source='manual',source_reference='',requester='Test customer',destination='Test destination',required_date='',pn=pn,revision=revision,quantity=data.get('quantity','2'),description='Test manufacturing request')
+    if response.status_code!=302:return response,None
+    rid=response.location.split('/')[-1]
+    if not rows(client.application,'SELECT id FROM part_revisions WHERE tenant_id=? AND pn=? AND revision=?',(tenant,pn,revision)):
+        response=add_part(client,pn=pn,revision=revision)
+        if response.status_code!=302 and not (response.status_code==409 and rows(client.application,'SELECT id FROM part_revisions WHERE tenant_id=? AND pn=? AND revision=?',(tenant,pn,revision))):return response,None
+    response=post(client,'/requests/'+rid+'/decision',action='approve',version='1',reason='Reviewed test drawing package',confirm='yes',external_ack='yes')
+    if response.status_code!=302:return response,None
+    version=rows(client.application,'SELECT version FROM intake_requests WHERE id=?',(rid,))[0][0]
+    return None,dict(request_id=rid,request_version=str(version))
+
+
+def planner_session(client):
+    with client.session_transaction() as session:
+        member=rows(client.application,'SELECT roles FROM memberships WHERE tenant_id=? AND user_id=?',(session.get('tenant_id'),session.get('user_id')))
+    return bool(member and 'planner' in member[0]['roles'].split(','))
+
+
+def create_ticket(client, legacy=True, auto_request=True, **overrides):
     data = dict(pn='PN-001', revision='A', quantity='2', tracking='batch', instructions='Check drawing tolerance ±0.1 mm', route='Cut | Cut to size\nAssemble | Fit the pieces')
     data.update(overrides)
+    if auto_request and planner_session(client) and 'request_id' not in data and len(str(data))<60000:
+        response, fields=approved_inputs(client,data)
+        if response is not None:return response
+        data.update(fields)
     response = post(client, '/tickets/new', **data)
     if legacy and response.status_code == 302:
         # Existing workflow fixtures model pre-dispatch travelers. New dispatch tests
@@ -80,7 +112,7 @@ def test_full_workflow_persists_and_prints(app):
     sign_in(client, 'inspector')
     assert post(client, path + '/inspect', version='3', result='pass', notes='Measured 10.02 mm; within tolerance').status_code == 302
     assert rows(app, 'SELECT state FROM tickets')[0]['state'] == 'accepted'
-    assert len(rows(app, 'SELECT * FROM events')) == 5
+    assert len(rows(app, 'SELECT * FROM events')) == 7  # Includes drawing attachment and request linkage.
     reopened = create_app({'TESTING': True, 'SECRET_KEY': 'test-only', 'DATABASE': app.config['DATABASE']})
     new_client = reopened.test_client()
     sign_in(new_client, 'viewer')
@@ -114,7 +146,7 @@ def test_route_order_duplicate_submission_and_inspection_gate(app):
     assert post(client, path + '/complete', version='1', operation_id=str(ids[1]), confirm='yes').status_code == 409
     assert post(client, path + '/complete', version='1', operation_id=str(ids[0]), confirm='yes').status_code == 302
     assert post(client, path + '/complete', version='1', operation_id=str(ids[0]), confirm='yes').status_code == 409
-    assert len(rows(app, 'SELECT * FROM events')) == 2
+    assert len(rows(app, 'SELECT * FROM events')) == 4  # Includes drawing attachment and request linkage.
 
 
 @pytest.mark.parametrize('changes', [dict(pn='PN-A,PN-B'), dict(pn=''), dict(quantity='0'), dict(quantity='1.5'), dict(quantity='10001'), dict(revision=''), dict(route=''), dict(route=' | no name'), dict(tracking='unknown'), dict(serials='S1'), dict(tracking='serial', serials='S1\nS1'), dict(tracking='serial', serials='S1')])
@@ -175,7 +207,7 @@ def test_concurrent_completion_records_once(app):
         return post(client, path + '/complete', version='1', operation_id=operation_id, confirm='yes').status_code
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(submit, clients)) == [302, 409]
-    assert len(rows(app, 'SELECT * FROM events')) == 2
+    assert len(rows(app, 'SELECT * FROM events')) == 4  # Includes drawing attachment and request linkage.
 
 
 def test_user_provisioning_rejects_invalid_roles_short_password_and_duplicate(app):

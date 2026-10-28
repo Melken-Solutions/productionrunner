@@ -30,7 +30,7 @@ def test_upload_select_and_auto_match_ticket_and_serial(app):
     part = response.location.split('/')[-1]
     assert b'PN-001' in client.get('/parts?q=PN-001').data
     assert b'No matching' in client.get('/parts?q=NONEXISTENT').data
-    assert part.encode() in client.get('/tickets/new').data
+    assert part.encode() in client.get('/requests/new').data
     drawing = client.get('/parts/' + part + '/drawing')
     assert drawing.data == PDF and drawing.mimetype == 'application/pdf'
     assert drawing.headers['Content-Security-Policy'] == "sandbox; default-src 'none'"
@@ -97,9 +97,24 @@ def test_revision_immutable_duplicate_and_new_revision_does_not_retarget(app):
                 conn.execute(sql)
 
 
+def legacy_ticket_without_request(client):
+    """Seed an actual pre-intake ticket to retain legacy drawing-attachment coverage."""
+    from uuid import uuid4
+    from werkzeug.wrappers import Response
+    from productionrunner import now
+    tid='JR-LEGACY-'+uuid4().hex[:12]
+    with client.session_transaction() as session:
+        tenant,user=session['tenant_id'],session['user_id']
+    with sqlite3.connect(client.application.config['DATABASE']) as conn:
+        conn.execute("INSERT INTO tickets VALUES(?,?, 'PN-001','A',2,'batch','[]','Legacy drawing required','ready',?,?,1)",(tid,tenant,user,now()))
+        conn.execute("INSERT INTO operations(tenant_id,ticket_id,sequence,name,instructions) VALUES(?,?,1,'Cut','Cut per drawing')",(tenant,tid))
+        conn.execute("INSERT INTO events(tenant_id,ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,'ticket_created','Legacy ticket',?)",(tenant,tid,user,now()))
+    return Response(status=302,headers={'Location':'/tickets/'+tid})
+
+
 def test_existing_ticket_exact_match_explicit_attachment_and_stale_guard(app):
     client = planner(app)
-    ticket = create_ticket(client).location.split('/')[-1]
+    ticket = legacy_ticket_without_request(client).location.split('/')[-1]
     assert post(client, '/tickets/' + ticket + '/drawing', version='1').status_code == 404
     assert add_part(client, revision='B').status_code == 302
     assert post(client, '/tickets/' + ticket + '/drawing', version='1').status_code == 404
@@ -138,7 +153,7 @@ def test_tenant_role_and_csrf_boundaries(app):
 
 def test_ticket_attachment_rolls_back_with_failed_audit(app):
     client = planner(app)
-    ticket = create_ticket(client).location.split('/')[-1]
+    ticket = legacy_ticket_without_request(client).location.split('/')[-1]
     assert add_part(client).status_code == 302
     with sqlite3.connect(app.config['DATABASE']) as conn:
         conn.execute("CREATE TRIGGER reject_drawing_event BEFORE INSERT ON events WHEN NEW.action='drawing_attached' BEGIN SELECT RAISE(ABORT,'test'); END")

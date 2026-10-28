@@ -257,7 +257,11 @@ def create_app(config=None):
     @roles_required('planner')
     def new_ticket():
         request_id = (request.args if request.method == 'GET' else request.form).get('request_id', '')
-        intake_entry = approved_request(db(), g.tenant['id'], request_id) if request_id else None
+        if not request_id:
+            if request.method == 'GET':
+                return redirect(url_for('intake_new'))
+            abort(409, 'Start with an approved production request before creating a JobRunner ticket.')
+        intake_entry = approved_request(db(), g.tenant['id'], request_id)
         if request.method == 'GET':
             parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
             return render_template('new.html', parts=parts, intake_entry=intake_entry, workflow=workflow_settings(db(), g.tenant['id']))

@@ -36,7 +36,7 @@ def test_each_tenant_completes_batch(two_tenants, tenant, prefix):
     sign_in(client, prefix + 'inspector', tenant)
     assert post(client, path + '/inspect', version='3', result='pass', notes='Within tolerance').status_code == 302
     assert rows(app, 'SELECT state FROM tickets')[0]['state'] == 'accepted'
-    assert len(rows(app, 'SELECT * FROM events')) == 5
+    assert len(rows(app, 'SELECT * FROM events')) == 7  # Includes drawing attachment and request linkage.
     assert not rows(app, 'PRAGMA foreign_key_check')
 
 
@@ -62,7 +62,7 @@ def test_copied_ids_cannot_read_or_mutate_other_tenant(two_tenants, owner, outsi
         sign_in(client, prefix + role, outsider)
         assert post(client, path + suffix, tenant_id=owner, **data).status_code == 404
     assert rows(app, 'SELECT version FROM tickets')[0]['version'] == 1
-    assert len(rows(app, 'SELECT * FROM events')) == 1
+    assert len(rows(app, 'SELECT * FROM events')) == 3  # Includes drawing attachment and request linkage.
     assert not rows(app, 'SELECT * FROM inspections')
 
 
@@ -78,7 +78,7 @@ def test_membership_roles_are_scoped_and_revocation_is_immediate(two_tenants):
     assert runner.invoke(args=['set-membership', 'planner', '--tenant', 'alpha', '--revoke']).exit_code == 0
     assert client.get(path).location == '/login'
     assert post(client, path + '/issue-traveler').location == '/login'
-    assert len(rows(app, 'SELECT * FROM events')) == 1
+    assert len(rows(app, 'SELECT * FROM events')) == 3  # Includes drawing attachment and request linkage.
     assert b'incorrect' in post(client, '/login', tenant='alpha', username='planner', password='test-password-123').data
     sign_in(client, 'planner', 'beta')
     assert client.get(path).status_code == 404

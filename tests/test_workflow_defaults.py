@@ -42,7 +42,7 @@ def test_preview_is_unsaved_and_defaults_are_not_retroactive(app):
 
 def test_required_approved_intake_and_inherited_gates(app):
  c=client(app);assert save(c,require_intake='1').status_code==302
- sign_in(c,'planner');assert create_ticket(c,workflow_version='1').status_code==409
+ sign_in(c,'planner');assert create_ticket(c,auto_request=False,workflow_version='1').status_code==409
  add_part(c);rid=receive(c).location.split('/')[-1]
  assert create_ticket(c,workflow_version='1',request_id=rid,request_version=rv(app,rid)).status_code==409
  assert decision(app,c,rid).status_code==302
