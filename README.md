@@ -309,3 +309,15 @@ The **Station time report** filters by UTC date range (maximum 366 days), statio
 Admins can stop an abandoned session without completing production, then correct effective event timestamps with a reason. Original timestamps, identities, actions and all corrections remain immutable and visible. Corrections affect reports only; they cannot create, undo or rewrite production completion/inspection. They reject future times, times before ticket creation, reversed chronology, stale corrections, station reservation overlap and overlapping attended labor. Backdating does not certify work actually happened; the admin is responsible for the evidence in the correction reason. Pauses are attributed to the person who recorded them, not an attribution of fault.
 
 Back up and run `flask --app productionrunner init-db` before restarting. The schema additions preserve existing records and files. No background timer or browser heartbeat is required; server-side events provide the clock boundaries, so closing a browser does not silently stop work.
+
+### Readable JobRunner IDs
+
+New production and return-repair tickets use `JR-YYYYMMDDSEQ`, for example
+`JR-20261027001`. The date is the ticket creation date in UTC. The deployment-wide
+sequence resets each UTC day, starts at `001`, and expands beyond three digits
+when needed (`1000`, etc.). Organizations share the numbering sequence; IDs are
+labels, never authorization credentials. Allocation and ticket creation commit
+atomically, including concurrent planner requests. Failed transactions do not
+consume a number. Existing ticket IDs and their links/barcodes remain unchanged;
+existing IDs are reserved to avoid collisions. Independent serial-unit travelers
+retain their `JR-U-` IDs and link to the readable parent JobRunner ID.

@@ -460,3 +460,9 @@ CREATE TRIGGER IF NOT EXISTS work_events_no_update BEFORE UPDATE ON work_events 
 CREATE TRIGGER IF NOT EXISTS work_events_no_delete BEFORE DELETE ON work_events BEGIN SELECT RAISE(ABORT,'Work evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS work_corrections_no_update BEFORE UPDATE ON work_time_corrections BEGIN SELECT RAISE(ABORT,'Time corrections are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS work_corrections_no_delete BEFORE DELETE ON work_time_corrections BEGIN SELECT RAISE(ABORT,'Time corrections are immutable'); END;
+
+-- Deployment-wide numbering; allocated under the ticket creation write lock.
+CREATE TABLE IF NOT EXISTS jobrunner_sequences (
+ day TEXT PRIMARY KEY,
+ sequence INTEGER NOT NULL CHECK(sequence >= 0)
+);

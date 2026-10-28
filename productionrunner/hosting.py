@@ -9,7 +9,7 @@ import click
 from flask import jsonify
 
 
-REQUIRED_TABLES = ('users', 'tenants', 'memberships', 'tickets', 'operations', 'events',
+REQUIRED_TABLES = ('jobrunner_sequences', 'users', 'tenants', 'memberships', 'tickets', 'operations', 'events',
                    'serial_units', 'part_revisions', 'part_dxf', 'organization_branding',
                    'stations', 'operation_assignments', 'ticket_dispatch', 'developer_accounts',
                    'storage_policies', 'storage_file_controls', 'part_imports', 'fulfillment_records', 'fulfillment_units',

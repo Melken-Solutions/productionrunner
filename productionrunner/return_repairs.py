@@ -1,6 +1,6 @@
 """Linked repair jobs retain normal production and outbound controls."""
 import json
-import secrets
+from .jobrunner_ids import next_ticket_id
 from flask import abort, g, request, render_template, redirect, url_for
 from .intake import actor, approved_request, link_ticket
 from .parts import ticket_drawing, matching_part
@@ -73,7 +73,7 @@ def register_return_repairs(app,db,roles_required,now,lock_ticket,event):
                     abort(400,'Provide a reason, repair acceptance criteria and 1–20 named routing steps.')
                 serials=json.loads(returned['serials'])
                 tracking='serial' if serials else 'batch'
-                tid='JR-'+secrets.token_hex(6).upper();stamp=now()
+                stamp=now();tid=next_ticket_id(db(),stamp)
                 db().execute('INSERT INTO tickets(id,tenant_id,pn,revision,quantity,tracking,serials,instructions,state,created_by,created_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)',(tid,g.tenant['id'],original['pn'],original['revision'],returned['quantity'],tracking,json.dumps(serials),instructions,'ready',g.user['id'],stamp))
                 db().execute('INSERT INTO ticket_dispatch VALUES(?,?,0)',(g.tenant['id'],tid))
                 snapshot(db(),g.tenant['id'],tid,g.user['id'],policy,stamp,event)

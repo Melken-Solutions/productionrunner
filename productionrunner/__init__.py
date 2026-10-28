@@ -8,6 +8,8 @@ from datetime import datetime, timezone, timedelta
 from functools import wraps
 from pathlib import Path
 
+from .jobrunner_ids import next_ticket_id
+
 from barcode import Code128
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for, Response
 
@@ -285,7 +287,6 @@ def create_app(config=None):
         route = [line.strip() for line in request.form.get('route', '').splitlines() if line.strip()]
         if not instructions or len(instructions) > 4000 or not 1 <= len(route) <= 20 or any(len(line) > 500 for line in route):
             abort(400, 'Provide work instructions and 1–20 routing steps, at most 500 characters per step.')
-        ticket_id = 'JR-' + secrets.token_hex(6).upper()
         with db():
             db().execute('BEGIN IMMEDIATE')
             intake_actor(db(), g.tenant['id'], g.user['id'], ('planner',))
@@ -294,8 +295,10 @@ def create_app(config=None):
                 if request.form.get('request_version') != str(intake_entry['version']):
                     abort(409, 'Request changed. Reopen the approved request.')
                 intake_entry = approved_request(db(), g.tenant['id'], request_id, str(intake_entry['version']))
+            stamp = now()
+            ticket_id = next_ticket_id(db(), stamp)
             db().execute('INSERT INTO tickets(id,tenant_id,pn,revision,quantity,tracking,serials,instructions,state,created_by,created_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)',
-                         (ticket_id, g.tenant['id'], pn, revision, quantity, tracking, json.dumps(serials), instructions, 'ready', g.user['id'], now()))
+                         (ticket_id, g.tenant['id'], pn, revision, quantity, tracking, json.dumps(serials), instructions, 'ready', g.user['id'], stamp))
             db().execute('INSERT INTO ticket_dispatch VALUES(?,?,0)', (g.tenant['id'], ticket_id))
             snapshot_workflow(db(), g.tenant['id'], ticket_id, g.user['id'], workflow, now(), event)
             for sequence, line in enumerate(route, 1):
