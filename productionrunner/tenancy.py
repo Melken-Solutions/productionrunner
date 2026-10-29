@@ -25,8 +25,8 @@ def validate_tenant(slug, name):
 
 @contextmanager
 def connect(app):
-    connection = sqlite3.connect(app.config['DATABASE'])
-    connection.execute('PRAGMA foreign_keys=ON')
+    from .database import connect as open_database
+    connection = open_database(app.config['DATABASE'])
     try:
         with connection:
             yield connection
@@ -40,11 +40,22 @@ def register_commands(app):
     @app.cli.command('init-db')
     def init_db():
         """Initialize a fresh database; never implicitly assign legacy data."""
+        from .database import is_postgres, migrate
+        if is_postgres(app.config['DATABASE']):
+            migrate(app.config['DATABASE'])
+            click.echo('PostgreSQL migrations applied.')
+            return
         with connect(app) as conn:
             columns = {r[1] for r in conn.execute('PRAGMA table_info(tickets)')}
             if columns and 'tenant_id' not in columns:
                 raise click.ClickException('Legacy database: stop the app and run migrate-tenancy with an explicit organization and backup path.')
             conn.executescript(schema)
+            # Existing SQLite installs retain embedded bytes. Remote storage is PostgreSQL-only.
+            for table in ('part_revisions', 'part_dxf'):
+                names = {r[1] for r in conn.execute('PRAGMA table_info('+table+')')}
+                for name, kind in [('object_key','TEXT'), ('object_size','INTEGER')]:
+                    if name not in names:
+                        conn.execute('ALTER TABLE '+table+' ADD COLUMN '+name+' '+kind)
         click.echo('Database initialized (existing data preserved).')
 
     @app.cli.command('add-tenant')

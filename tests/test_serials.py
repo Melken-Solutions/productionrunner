@@ -170,7 +170,8 @@ def test_unit_event_atomicity_immutability_and_owned_operation(app):
 
 def test_serial_text_escaped_and_unique_per_ticket(app):
     client, ticket, units, _ = prepared_units(app, '<script>x</script>\nS2')
-    page = client.get('/units/' + units[0]['id'])
+    escaped_unit=next(u for u in units if u['serial']=='<script>x</script>')
+    page = client.get('/units/' + escaped_unit['id'])
     assert b'&lt;script&gt;' in page.data and b'<script>' not in page.data
     assert len(units) == 2
     duplicate = create_ticket(client, tracking='serial', serials='S1\nS1')

@@ -2,3 +2,6 @@
 .hot{background:#ffe0d8;color:#912600;border:1px solid #d76745}.hot-button{background:#a33010;color:#fff}.hot-button:hover{background:#7e250c}.priority-control{min-width:170px}.priority-control form{display:grid;gap:8px;margin:8px 0}.priority-control input{max-width:120px}.priority-control button{padding:8px 12px}
 
 .work-controls button,.work-controls select{min-height:64px;font-size:1.1rem}.work-controls form{margin-bottom:1.5rem}
+
+/* Only the selected credential field should appear on sign-in. */
+#sign-in-form [hidden] { display: none !important; }

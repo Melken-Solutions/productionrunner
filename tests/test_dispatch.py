@@ -24,8 +24,23 @@ def assign(app,client,path,op,station,operator='',v=None):
     return post(client,path+'/assignments/'+str(op['id']),version=v or version(app,path),station_id=str(station),operator_id=str(operator),reason='Schedule work')
 
 
+def prepare_plan(app,client,path):
+    tid=path.split('/')[-1]
+    if rows(app,'SELECT 1 FROM job_plans WHERE ticket_id=?',(tid,)):return
+    stations=rows(app,'SELECT id FROM stations WHERE active=1 ORDER BY id')
+    if not stations:return
+    data=dict(version=version(app,path),reason='Review fixture Job Plan')
+    for op in rows(app,'SELECT * FROM operations WHERE ticket_id=?',(tid,)):
+        data['criteria_'+str(op['id'])]='Verify drawing features and finish'
+    for stage in ('inspection','packing','shipping'):
+        data[stage+'_station']=str(stations[0]['id'])
+        data[stage+'_criteria']='Verify approved '+stage+' requirements'
+    assert post(client,path+'/plan',**data).status_code==302
+
+
 def release(app,client,path):
-    return post(client,path+'/release',version=version(app,path),reason='Ready for production')
+    prepare_plan(app,client,path)
+    return post(client,path+'/release',version=version(app,path),reason='Ready for production',plan_review='yes')
 
 
 def board(app,station=None):
@@ -64,7 +79,7 @@ def test_covering_operator_snapshot_and_independence(app):
     snap=rows(app,'SELECT * FROM completion_assignments ORDER BY id')[0]
     assert snap['station_name']=='Laser 1' and snap['assigned_username']=='viewer' and snap['actual_user_id']==2
     assert post(client,path+'/inspect',version=version(app,path),result='pass',notes='self').status_code==403
-    assert board(app,2)[0]['inspection']==2
+    assert board(app,1)[0]['inspection']==2  # Planned inspection station, not last production station.
     sign_in(client,'planner')
     assert assign(app,client,path,ops[0],2).status_code==409
     with sqlite3.connect(app.config['DATABASE']) as conn:
@@ -100,7 +115,7 @@ def test_station_hold_and_cancelled_removed(app):
     for op in ops:assert post(client,path+'/complete',version=version(app,path),operation_id=str(op['id']),confirm='yes').status_code==302
     sign_in(client,'inspector')
     assert post(client,path+'/inspect',version=version(app,path),result='fail',notes='Out of tolerance').status_code==302
-    assert board(app,2)[0]['held']==2 and board(app)[0]['held']==2
+    assert board(app,1)[0]['held']==2 and board(app)[0]['held']==2
     sign_in(client,'admin')
     assert post(client,path+'/cancel',version=version(app,path),confirm='yes',reason='Cancelled').status_code==302
     assert board(app)==[]
@@ -190,7 +205,8 @@ def test_partial_serial_hold_does_not_hide_ready_sibling(app):
     v=rows(app,'SELECT version FROM serial_units WHERE id=?',(unit['id'],))[0][0]
     assert post(client,'/units/'+unit['id']+'/inspect',version=str(v),result='fail',notes='Defect').status_code==302
     assert board(app,1)[0]['ready']==1
-    assert board(app,2)[0]['held']==1 and board(app,2)[0]['upcoming']==1
+    assert any(r['held']==1 and r['operation']=='Independent inspection' for r in board(app,1))
+    assert board(app,2)[0]['upcoming']==1 and board(app,2)[0]['held']==0
     whole=board(app)[0]
     assert whole['held']==1 and whole['ready']==1 and whole['accepted']==0
 

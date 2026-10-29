@@ -4,12 +4,14 @@ import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from urllib.parse import urlsplit,parse_qs
 
 import click
 from flask import jsonify
+from .database import is_postgres, connect as open_database
 
 
-REQUIRED_TABLES = ('request_outside', 'outside_steps', 'outside_moves', 'outside_inspections', 'jobrunner_sequences', 'users', 'tenants', 'memberships', 'tickets', 'operations', 'events',
+REQUIRED_TABLES = ('job_plans', 'first_piece_results', 'vendors', 'materials', 'request_materials', 'ticket_materials', 'request_outside', 'outside_steps', 'outside_moves', 'outside_inspections', 'jobrunner_sequences', 'users', 'tenants', 'memberships', 'tickets', 'operations', 'events',
                    'serial_units', 'part_revisions', 'part_dxf', 'organization_branding',
                    'stations', 'operation_assignments', 'ticket_dispatch', 'developer_accounts',
                    'storage_policies', 'storage_file_controls', 'part_imports', 'fulfillment_records', 'fulfillment_units',
@@ -25,8 +27,17 @@ def configure(app):
         raise ValueError('PR_TRUSTED_HOSTS must contain exact hostnames without schemes, ports or wildcards.')
     if hosts:
         app.config['TRUSTED_HOSTS'] = hosts
+    origin=os.environ.get('PR_PUBLIC_ORIGIN','').rstrip('/')
+    if origin:
+        parsed=urlsplit(origin)
+        if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment or parsed.hostname not in hosts:
+            raise ValueError('PR_PUBLIC_ORIGIN must be an HTTPS origin matching PR_TRUSTED_HOSTS.')
+        app.config['PR_PUBLIC_ORIGIN']=origin
     if app.config['PR_ENV'] == 'production':
-        if not os.environ.get('PR_DATA_DIR'):
+        database_url=os.environ.get('PR_DATABASE_URL','')
+        if is_postgres(database_url) and parse_qs(urlsplit(database_url).query).get('sslmode')!=['verify-full']:
+            raise ValueError('Production PostgreSQL requires sslmode=verify-full and a trusted root certificate.')
+        if not os.environ.get('PR_DATA_DIR') and not is_postgres(os.environ.get('PR_DATABASE_URL','')):
             raise ValueError('Production requires PR_DATA_DIR on persistent storage.')
         if len(os.environ.get('PR_SECRET_KEY', '')) < 32:
             raise ValueError('Production requires a PR_SECRET_KEY of at least 32 characters from a secret manager.')
@@ -41,6 +52,22 @@ def configure(app):
 def readiness(app):
     """Read-only probe; never creates a missing database or reveals tenant details."""
     try:
+        if is_postgres(app.config['DATABASE']):
+            import psycopg
+            try:
+                with closing(open_database(app.config['DATABASE'])) as conn:
+                    if app.config.get('PR_ENV')=='production':
+                        role=conn.raw.execute("SELECT rolsuper OR rolbypassrls OR has_schema_privilege(current_user,'productionrunner','CREATE') FROM pg_roles WHERE rolname=current_user").fetchone()
+                        if not role or role[0]:return jsonify(status='not_ready'),503
+                    names={r[0] for r in conn.raw.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='productionrunner'")}
+                    if not set(REQUIRED_TABLES) <= names or 'schema_migrations' not in names:
+                        return jsonify(status='not_ready'),503
+                    conn.execute('SELECT id,tenant_id,version FROM tickets LIMIT 1').fetchall()
+                    conn.execute('SELECT object_key,object_size FROM part_revisions LIMIT 1').fetchall()
+                    conn.execute('SELECT object_key,object_size FROM part_dxf LIMIT 1').fetchall()
+                return jsonify(status='ready')
+            except (psycopg.Error,sqlite3.Error):
+                return jsonify(status='not_ready'),503
         uri = Path(app.config['DATABASE']).resolve().as_uri() + '?mode=ro'
         with closing(sqlite3.connect(uri, uri=True, timeout=1)) as conn:
             names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -60,6 +87,8 @@ def register_hosting(app):
     @click.argument('destination', type=click.Path(path_type=Path))
     def backup_db(destination):
         """Create a private consistent SQLite snapshot at a NEW destination path."""
+        if is_postgres(app.config['DATABASE']):
+            raise click.ClickException('Use pg_dump with the migration/backup connection; see the cloud recovery runbook.')
         created = False
         try:
             # Open source read-only before creating destination; never create an empty source.

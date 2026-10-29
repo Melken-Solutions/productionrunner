@@ -6,7 +6,9 @@ from test_dispatch import version, release, assign, board
 
 
 def setup(app, serial=False, route='Coat | Powder coat\nPack | Package'):
-    c=app.test_client();sign_in(c,'planner')
+    c=app.test_client();sign_in(c,'admin')
+    assert post(c,'/admin/stations',name='Inspection and dispatch',reason='Final-stage fixture station').status_code==302
+    sign_in(c,'planner')
     path=create_ticket(c,legacy=False,route=route,**({'tracking':'serial','serials':'S1\nS2'} if serial else {})).location
     ops=rows(app,'SELECT * FROM operations WHERE ticket_id=? ORDER BY sequence',(path.split('/')[-1],))
     return c,path,ops

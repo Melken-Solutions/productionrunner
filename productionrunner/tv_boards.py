@@ -20,40 +20,46 @@ def board_data(conn,tenant_id,station_id=None):
     dispatch={r['ticket_id']:r['released'] for r in conn.execute('SELECT * FROM ticket_dispatch WHERE tenant_id=?',(tenant_id,))}
     output=[]
     for ticket in tickets:
+        from .job_plan import current as current_plan, first_piece_passed
+        plan=current_plan(conn,tenant_id,ticket['id'])
         delivery=progress(conn,tenant_id,ticket)
         if delivery['closed']:continue
         ops=operations[ticket['id']]
         is_released=dispatch.get(ticket['id'],1)
         targets=units[ticket['id']] or [dict(id=None,state=ticket['state'])]
         per_op={op['id']:defaultdict(int) for op in ops}
-        stages=defaultdict(int);held=0;ready=0;inspection=0;accepted=0
+        stages=defaultdict(int);held=0;ready=0;inspection=0;accepted=0;final_held=0
         for target in targets:
             amount=1 if target['id'] else ticket['quantity']
             if target['state']=='accepted':
                 accepted+=amount;continue
             pending=[op for op in ops if (op['id'] not in completions[target['id']] if target['id'] else op['completed_by'] is None)]
             current=pending[0] if pending else None
+            piece_pending=bool(current and not first_piece_passed(conn,tenant_id,ticket['id'],current['id']))
             if target['state']=='held':
                 held+=amount
                 # An inspection hold stays attributed to the final production station until disposition.
                 focus=current or (ops[-1] if ops else None)
-                if focus: per_op[focus['id']]['held']+=amount
+                if plan and not current:final_held+=amount
+                elif focus: per_op[focus['id']]['held']+=amount
                 stages['HOLD · '+((focus['station_name'] or 'Unassigned') if focus else 'No route')]+=amount
             elif not is_released:
                 stages['Awaiting planner release']+=amount
             elif current and outside_step(conn,tenant_id,current['id']):
                 stages[outside_status(conn,tenant_id,current['id'],target['id'])]+=amount
+            elif current and piece_pending:
+                stages[(current['station_name'] or 'Unassigned')+' · First-piece approval required']+=amount
             elif current:
                 ready+=amount
                 stages[(current['station_name'] or 'Unassigned')+' · '+current['name']]+=amount
             else:
                 inspection+=amount;stages['Independent inspection']+=amount
-                if ops: per_op[ops[-1]['id']]['inspection']+=amount
+                if ops and not plan: per_op[ops[-1]['id']]['inspection']+=amount
             for op in pending:
                 if not is_released: per_op[op['id']]['planning']+=amount
                 elif target['state']=='held':
                     if op!=current: per_op[op['id']]['upcoming']+=amount
-                elif op==current: per_op[op['id']]['ready']+=amount
+                elif op==current: per_op[op['id']]['upcoming' if piece_pending else 'ready']+=amount
                 else: per_op[op['id']]['upcoming']+=amount
         common=dict(ticket_id=ticket['id'],pn=ticket['pn'],revision=ticket['revision'],quantity=ticket['quantity'],hot=ticket['hot_priority'],accepted=accepted)
         if station_id is None:
@@ -67,7 +73,15 @@ def board_data(conn,tenant_id,station_id=None):
             for op in ops:
                 counts=per_op[op['id']]
                 if op['station_id']==station_id and any(counts.values()):
-                    output.append(dict(common,operation=f"{op['sequence']}. {op['name']}",operator=op['assigned_operator'] or 'Shared / unassigned',**{k:counts[k] for k in ['ready','upcoming','held','inspection','planning']}))
+                    output.append(dict(common,operation=f"{op['sequence']}. {op['name']}"+(' · First-piece approval required' if is_released and not first_piece_passed(conn,tenant_id,ticket['id'],op['id']) else ''),operator=op['assigned_operator'] or 'Shared / unassigned',**{k:counts[k] for k in ['ready','upcoming','held','inspection','planning']}))
+            if plan and is_released:
+                pending_checks=[r[0] for r in conn.execute('SELECT c.stage FROM fulfillment_checks c WHERE c.tenant_id=? AND c.ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)',(tenant_id,ticket['id']))]
+                for stage,label,amount in [('inspection','Independent inspection',inspection),('packing','Packing',delivery['available']),('shipping','Physical departure',delivery['waiting'])]:
+                    if plan['data'][stage]['station_id']!=station_id:continue
+                    hold=final_held if stage=='inspection' else 0
+                    if not amount and not hold:continue
+                    blocked=(stage=='packing' and 'pack' in pending_checks) or (stage=='shipping' and bool(pending_checks))
+                    output.append(dict(common,operation=label+(' · business checkpoints pending' if blocked else ''),operator='Authorized '+('inspector' if stage=='inspection' else 'operator / planner'),ready=amount if stage!='inspection' and not blocked else 0,upcoming=amount if blocked else 0,held=hold,inspection=amount if stage=='inspection' else 0,planning=0))
     return output
 
 

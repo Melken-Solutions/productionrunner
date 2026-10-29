@@ -149,6 +149,8 @@ def register_controls(app, db, roles_required, now, lock_ticket):
                 abort(409, 'Complete the repair before reinspection.')
             if not independent(case):
                 abort(403, 'An original production or rework contributor cannot inspect this work.')
+            from .job_plan import evidence
+            evidence(db(),g.tenant['id'],case['ticket_id'],'inspection',lambda tid,action,detail:event(tid,case['unit_id'],action,detail),case['unit_id'],passing=result=='pass')
             db().execute('UPDATE rework_cases SET inspector_id=?,result=?,inspection_notes=?,inspected_at=?,version=version+1 WHERE id=?', (g.user['id'], result, notes, now(), case_id))
             state = 'accepted' if result == 'pass' else 'held'
             if case['unit_id']:

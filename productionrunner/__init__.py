@@ -20,9 +20,8 @@ def now():
 
 def db():
     if 'db' not in g:
-        g.db = sqlite3.connect(g.app_db, timeout=10)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute('PRAGMA foreign_keys = ON')
+        from .database import connect
+        g.db = connect(g.app_db, timeout=10)
     return g.db
 
 
@@ -59,14 +58,18 @@ def create_app(config=None):
         except FileExistsError:
             pass
     app.config.update(SECRET_KEY=os.environ.get('PR_SECRET_KEY') or secret_path.read_text(),
-                      DATABASE=str(Path(app.instance_path) / 'productionrunner.sqlite3'),
+                      DATABASE=os.environ.get('PR_DATABASE_URL') or str(Path(app.instance_path) / 'productionrunner.sqlite3'),
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
                       SESSION_COOKIE_SECURE=os.environ.get('PR_HTTPS') == '1',
                       PERMANENT_SESSION_LIFETIME=timedelta(hours=8), MAX_CONTENT_LENGTH=31 * 1024 * 1024)
     if config:
         app.config.update(config)
 
+    from .object_storage import configure as configure_storage
+    configure_storage(app)
     register_hosting(app)
+    from .data_migration import register as register_data_migration
+    register_data_migration(app)
 
     @app.before_request
     def prepare():
@@ -124,8 +127,9 @@ def create_app(config=None):
         return render_template('error.html', error=error), error.code
 
     def event(ticket_id, action, detail=''):
-        db().execute('INSERT INTO events(tenant_id,ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?,?)',
+        result = db().execute('INSERT INTO events(tenant_id,ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?,?)',
                      (g.tenant['id'], ticket_id, g.user['id'], action, detail, now()))
+        return result.lastrowid
 
     def ticket_or_404(ticket_id):
         ticket = db().execute('SELECT t.*, p.priority AS hot_priority, p.hot_since FROM tickets t LEFT JOIN ticket_priorities p ON p.ticket_id=t.id AND p.tenant_id=t.tenant_id WHERE t.id=? AND t.tenant_id=?', (ticket_id, g.tenant['id'])).fetchone()
@@ -144,6 +148,16 @@ def create_app(config=None):
 
     from .workflow_defaults import register_workflow_defaults, settings as workflow_settings, validate_ticket as validate_workflow, snapshot as snapshot_workflow
     register_workflow_defaults(app, db, roles_required)
+    from .job_plan import register_job_plan
+    register_job_plan(app,db,roles_required,now,lock_ticket,event)
+    from .vendors import register_vendors
+    register_vendors(app,db,roles_required)
+    from .materials import register_materials
+    register_materials(app,db,roles_required)
+    from .custom_fields import register as register_custom_fields
+    register_custom_fields(app,db,roles_required)
+    from .shop_setup import register as register_shop_setup
+    register_shop_setup(app,db,roles_required)
     from .intake import register_intake, approved_request, link_ticket, actor as intake_actor
     register_intake(app, db, roles_required, now)
     from .fulfillment import register_fulfillment
@@ -162,6 +176,8 @@ def create_app(config=None):
     register_storage(app, db, roles_required)
     from .admin import register_admin
     register_admin(app, db, roles_required)
+    from .onboarding import register as register_onboarding
+    register_onboarding(app, db, roles_required)
     from .outside_processing import register_outside
     register_outside(app, db, roles_required, now, lock_ticket, event)
     from .dispatch import register_dispatch
@@ -289,8 +305,12 @@ def create_app(config=None):
             abort(400, 'Choose serial tracking when providing serial numbers.')
         if tracking == 'serial' and (len(serials) != quantity or len(set(serials)) != quantity or any(len(s) > 80 for s in serials)):
             abort(400, 'Provide exactly one unique serial number per unit (up to 80 characters each).')
-        instructions = request.form.get('instructions', '').strip()
+        from . import request_job_plan as request_plan
+        initial_plan = request_plan.get(db(),g.tenant['id'],request_id)
+        instructions = intake_entry['description'] if initial_plan else request.form.get('instructions', '').strip()
         route = [line.strip() for line in request.form.get('route', '').splitlines() if line.strip()]
+        if initial_plan:
+            route = request_plan.route(initial_plan)
         if not instructions or len(instructions) > 4000 or not 1 <= len(route) <= 20 or any(len(line) > 500 for line in route):
             abort(400, 'Provide work instructions and 1–20 routing steps, at most 500 characters per step.')
         with db():
@@ -314,7 +334,13 @@ def create_app(config=None):
                 db().execute('INSERT INTO operations(tenant_id,ticket_id,sequence,name,instructions) VALUES(?,?,?,?,?)',
                              (g.tenant['id'], ticket_id, sequence, name.strip(), detail.strip() or instructions))
             from .request_outside import apply as apply_requested_outside
-            apply_requested_outside(db(),g.tenant['id'],request_id,ticket_id,request.form.get('outside_sequence'),event)
+            apply_requested_outside(db(),g.tenant['id'],request_id,ticket_id,request_plan.outside_sequence(initial_plan,request.form.get('outside_sequence')),event)
+            from .dispatch import assign_named_stations
+            if not initial_plan:
+                assign_named_stations(db(),g.tenant['id'],ticket_id,event)
+            request_plan.apply(db(),g.tenant['id'],request_id,ticket_id,g.user['id'],stamp,event)
+            from .materials import snapshot as snapshot_material
+            snapshot_material(db(),g.tenant['id'],request_id,ticket_id,event)
             if tracking == 'serial':
                 create_units(db(), g.tenant['id'], ticket_id, serials)
             if part:
@@ -358,6 +384,8 @@ def create_app(config=None):
             require_dispatch(db(), g.tenant['id'], ticket_id, operation['id'])
             if request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm that the entire batch completed this operation.')
+            from .job_plan import evidence
+            evidence(db(),g.tenant['id'],ticket_id,operation['id'],event)
             from .work_tracking import finish_work
             finish_work(db(),g.tenant['id'],ticket,operation,g.user['id'],now(),event)
             db().execute('UPDATE operations SET completed_by=?, completed_at=? WHERE id=? AND tenant_id=?', (g.user['id'], now(), operation['id'], g.tenant['id']))
@@ -387,6 +415,8 @@ def create_app(config=None):
             result, notes = request.form.get('result'), request.form.get('notes', '').strip()
             if result not in {'pass', 'fail'} or not notes or len(notes) > 4000:
                 abort(400, 'Choose pass or fail and record inspection evidence (up to 4000 characters).')
+            from .job_plan import evidence
+            evidence(db(),g.tenant['id'],ticket_id,'inspection',event,passing=result=='pass')
             db().execute('INSERT INTO inspections(tenant_id,ticket_id,inspector_id,result,notes,created_at) VALUES(?,?,?,?,?,?)',
                          (g.tenant['id'], ticket_id, g.user['id'], result, notes, now()))
             db().execute('UPDATE tickets SET state=?,version=version+1 WHERE id=? AND tenant_id=?', ('accepted' if result == 'pass' else 'held', ticket_id, g.tenant['id']))

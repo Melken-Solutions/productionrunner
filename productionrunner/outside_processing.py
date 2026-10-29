@@ -65,9 +65,8 @@ def register_outside(app, db, roles_required, now, lock_ticket, event):
 
     def log(tid, action, detail, units=()):
         for uid in units or [None]:
-            event(tid, action, json.dumps(dict(detail, unit_id=uid)))
+            eid = event(tid, action, json.dumps(dict(detail, unit_id=uid)))
             if uid:
-                eid = db().execute('SELECT last_insert_rowid()').fetchone()[0]
                 db().execute('INSERT INTO unit_event_links VALUES(?,?,?,?)',(g.tenant['id'],tid,uid,eid))
 
     @app.context_processor
@@ -90,16 +89,22 @@ def register_outside(app, db, roles_required, now, lock_ticket, event):
             if not op:abort(404)
             if request.form.get('mode')=='internal':
                 db().execute('DELETE FROM outside_steps WHERE tenant_id=? AND operation_id=?',(g.tenant['id'],operation_id))
+                from .materials import require_service
+                require_service(db(),g.tenant['id'],ticket_id)
                 db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?',(g.tenant['id'],ticket_id))
                 log(ticket_id,'outside_plan_removed',dict(operation_id=operation_id))
                 return redirect(url_for('outside_detail',ticket_id=ticket_id))
             vendor=text('vendor',200);service=text('service',200);instructions=text('instructions',4000);criteria=text('inspection_requirements',4000)
+            from .vendors import validate
+            validate(db(),g.tenant['id'],vendor,service)
             due=request.form.get('due_date','')
             try: due=date.fromisoformat(due).isoformat()
             except ValueError:abort(400,'Choose a valid expected return date.')
             reference=request.form.get('reference','').strip()
             if len(reference)>200:abort(400,'Reference is too long.')
             db().execute('INSERT INTO outside_steps VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(operation_id) DO UPDATE SET vendor=excluded.vendor,service=excluded.service,instructions=excluded.instructions,inspection_requirements=excluded.inspection_requirements,due_date=excluded.due_date,reference=excluded.reference',(g.tenant['id'],ticket_id,operation_id,vendor,service,instructions,criteria,due,reference))
+            from .materials import require_service
+            require_service(db(),g.tenant['id'],ticket_id)
             db().execute('DELETE FROM operation_assignments WHERE tenant_id=? AND operation_id=?',(g.tenant['id'],operation_id))
             db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?',(g.tenant['id'],ticket_id))
             log(ticket_id,'outside_plan_saved',dict(operation_id=operation_id,vendor=vendor,service=service,instructions=instructions,inspection_requirements=criteria,due_date=due,reference=reference))
@@ -169,6 +174,8 @@ def register_outside(app, db, roles_required, now, lock_ticket, event):
                     if contributed(db(),g.tenant['id'],ticket_id,uid,user):abort(403,'Production contributors cannot inspect this receipt.')
                     query='SELECT 1 FROM unit_completions WHERE tenant_id=? AND unit_id=? AND actor_id=?' if uid else 'SELECT 1 FROM operations WHERE tenant_id=? AND ticket_id=? AND completed_by=?'
                     if db().execute(query,(g.tenant['id'],uid or ticket_id,user)).fetchone():abort(403,'Production contributors cannot inspect this receipt.')
+                from .job_plan import evidence
+                evidence(db(),g.tenant['id'],ticket_id,operation_id,event,unit=ids,passing=result=='pass')
                 row=db().execute('INSERT INTO outside_inspections(tenant_id,ticket_id,receipt_id,result,actor_id,notes,created_at) VALUES(?,?,?,?,?,?,?)',(g.tenant['id'],ticket_id,receipt['id'],result,user,notes,stamp))
                 log(ticket_id,'outside_inspection_'+result,dict(operation_id=operation_id,receipt_id=receipt['id'],inspection_id=row.lastrowid,notes=notes),ids)
                 if result=='pass':

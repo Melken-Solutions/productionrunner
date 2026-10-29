@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'admin_base.html' %}{% block admin_content %}
 <p><a href="{{ url_for('admin_dashboard') }}">← Organization Admin</a></p><h1>Document storage &amp; retention</h1>
 <p class="alert"><strong>Preview only: no files are deleted.</strong> Policies calculate future eligibility. Scheduled purging, recoverable quarantine and physical deduplication are not enabled.</p>
 {% if saved %}<p role="status">Storage settings saved.</p>{% endif %}{% if preview %}<p role="status" class="alert">Unsaved policy preview — review the inventory below, then save if appropriate.</p>{% endif %}

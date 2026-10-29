@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block content %}{% include 'repair_reference.html' %}{% include 'dispatch_banner.html' %}{% include 'cancellation.html' %}
+{% block content %}{% with custom_values=ticket_custom(ticket.id) %}{% include 'custom_field_summary.html' %}{% endwith %}{% include 'repair_reference.html' %}{% include 'dispatch_banner.html' %}{% include 'cancellation.html' %}
 <div class="no-print"><a href="{{ url_for('unit_detail', unit_id=unit.id) }}">← Live unit progress</a><p>Print at 100% and scan-test before use.</p></div>
 <article class="traveler"><p class="eyebrow">INDIVIDUAL JOBRUNNER TRAVELER</p><h1>Serial {{ unit.serial }}</h1>
 <div class="traveler-brand">{% include 'brand_identity.html' %}</div><img class="barcode" src="{{ url_for('unit_barcode', unit_id=unit.id) }}" alt="Code 128 barcode for {{ unit.id }}">
@@ -8,4 +8,4 @@
 {% set drawing = drawing_for(ticket) %}{% if drawing %}<p>Drawing: {{ drawing.pn }} rev {{ drawing.revision }} — open the live ticket to view its fixed reference.</p>{% endif %}<h3>Work instructions / acceptance criteria</h3><p class="preserve">{{ ticket.instructions }}</p>
 <h3>Route</h3><ol>{% for o in operations %}<li><strong>{{ o.name }}</strong>{% include 'route_attribution.html' %} — {{ o.instructions }}</li>{% endfor %}<li>Independent inspection by someone who performed none of this unit’s production work.</li></ol>
 <p>Printed status is not release authorization. Do not attach this traveler to another unit.</p>{% include 'rework_print.html' %}</article>
-{% endblock %}
+{% include 'plan_print.html' %}{% endblock %}

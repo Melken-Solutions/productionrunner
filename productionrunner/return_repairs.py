@@ -20,8 +20,7 @@ def closure_event(conn, tenant, user, link, action, reason, stamp, event):
         event(tid,'return_'+action,detail)
     for unit in conn.execute('SELECT original_unit_id,repair_unit_id FROM return_repair_units WHERE tenant_id=? AND return_id=?',(tenant,link['return_id'])):
         for tid,uid in ((link['ticket_id'],unit['original_unit_id']),(link['repair_ticket_id'],unit['repair_unit_id'])):
-            event(tid,'unit_return_'+action,detail)
-            eid=conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+            eid = event(tid,'unit_return_'+action,detail)
             conn.execute('INSERT INTO unit_event_links VALUES(?,?,?,?)',(tenant,tid,uid,eid))
     conn.execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?',(tenant,link['ticket_id']))
 
@@ -68,6 +67,11 @@ def register_return_repairs(app,db,roles_required,now,lock_ticket,event):
                     abort(409,'Approved request must match the repair PN, revision, returned quantity and drawing.')
                 instructions=request.form.get('instructions','').strip()
                 route=[s.strip() for s in request.form.get('route','').splitlines() if s.strip()]
+                from . import request_job_plan as request_plan
+                initial_plan=request_plan.get(db(),g.tenant['id'],req['id']) if req else None
+                if initial_plan:
+                    instructions=req['description']
+                    route=request_plan.route(initial_plan)
                 reason=request.form.get('reason','').strip()
                 if not 1<=len(reason)<=500 or not 1<=len(instructions)<=4000 or not 1<=len(route)<=20 or any(len(s)>500 or not s.partition('|')[0].strip() for s in route):
                     abort(400,'Provide a reason, repair acceptance criteria and 1–20 named routing steps.')
@@ -81,7 +85,14 @@ def register_return_repairs(app,db,roles_required,now,lock_ticket,event):
                     name,_,detail=line.partition('|')
                     db().execute('INSERT INTO operations(tenant_id,ticket_id,sequence,name,instructions) VALUES(?,?,?,?,?)',(g.tenant['id'],tid,seq,name.strip(),detail.strip() or instructions))
                 from .request_outside import apply as apply_requested_outside
-                apply_requested_outside(db(),g.tenant['id'],req['id'],tid,request.form.get('outside_sequence'),event)
+                apply_requested_outside(db(),g.tenant['id'],req['id'],tid,request_plan.outside_sequence(initial_plan,request.form.get('outside_sequence')),event)
+                from .dispatch import assign_named_stations
+                if not initial_plan:
+                    assign_named_stations(db(),g.tenant['id'],tid,event)
+                if req:
+                    request_plan.apply(db(),g.tenant['id'],req['id'],tid,g.user['id'],stamp,event)
+                from .materials import snapshot as snapshot_material
+                snapshot_material(db(),g.tenant['id'],req['id'],tid,event,original=ticket_id)
                 create_units(db(),g.tenant['id'],tid,serials)
                 db().execute('INSERT INTO ticket_drawings VALUES(?,?,?)',(g.tenant['id'],tid,part['id']))
                 db().execute('INSERT INTO return_repairs VALUES(?,?,?,?,?,?,?)',(g.tenant['id'],ticket_id,return_id,tid,g.user['id'],reason,stamp))

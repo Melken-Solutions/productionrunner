@@ -7,7 +7,7 @@ from .admin import epoch
 def progress(conn, tenant, ticket):
     totals = {r['kind']: r['qty'] for r in conn.execute('SELECT kind,SUM(quantity) AS qty FROM fulfillment_active_records WHERE tenant_id=? AND ticket_id=? GROUP BY kind', (tenant, ticket['id']))}
     packed, departed = totals.get('pack', 0), totals.get('depart', 0)
-    units = conn.execute('SELECT COUNT(*) AS total,SUM(state=\'accepted\') AS accepted FROM serial_units WHERE tenant_id=? AND ticket_id=?', (tenant, ticket['id'])).fetchone()
+    units = conn.execute('SELECT COUNT(*) AS total,SUM(CASE WHEN state=\'accepted\' THEN 1 ELSE 0 END) AS accepted FROM serial_units WHERE tenant_id=? AND ticket_id=?', (tenant, ticket['id'])).fetchone()
     accepted = (units['accepted'] or 0) if units['total'] else (ticket['quantity'] if ticket['state'] == 'accepted' else 0)
     pending = conn.execute('SELECT COUNT(*) FROM fulfillment_checks c WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)', (tenant, ticket['id'])).fetchone()[0]
     closed = departed == ticket['quantity']
@@ -120,8 +120,7 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             detail = json.dumps(dict(record_id=record_id, kind=record['kind'], quantity=record['quantity'], serials=json.loads(record['serials']), reason=reason))
             event(ticket_id, 'delivery_record_reversed', detail)
             for unit in linked:
-                event(ticket_id, 'unit_delivery_reversed', detail)
-                eid = db().execute('SELECT last_insert_rowid()').fetchone()[0]
+                eid = event(ticket_id, 'unit_delivery_reversed', detail)
                 db().execute('INSERT INTO unit_event_links VALUES(?,?,?,?)', (g.tenant['id'], ticket_id, unit['unit_id'], eid))
             after = progress(db(), g.tenant['id'], ticket)
             if after['waiting'] < 0 or after['available'] < 0:
@@ -155,6 +154,8 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             pending = db().execute('SELECT stage FROM fulfillment_checks c WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)', (g.tenant['id'], ticket_id)).fetchall()
             if any(c['stage'] == 'pack' or kind == 'depart' for c in pending):
                 abort(409, 'Complete the required checkpoints for this stage first.')
+            from .job_plan import evidence
+            evidence(db(),g.tenant['id'],ticket_id,'packing' if kind=='pack' else 'shipping',event)
             selected = request.form.getlist('unit_id')
             serial_names = []
             if state['serial']:
@@ -191,8 +192,7 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             if selected:
                 # The existing link table permits one unit per event; keep each unit's history explicit.
                 for uid, serial in zip(selected, serial_names):
-                    event(ticket_id, 'unit_packed' if kind == 'pack' else 'unit_departed', json.dumps(dict(record_id=record.lastrowid, unit_id=uid, serial=serial, destination=destination, reference=reference)))
-                    unit_event_id = db().execute('SELECT last_insert_rowid()').fetchone()[0]
+                    unit_event_id = event(ticket_id, 'unit_packed' if kind == 'pack' else 'unit_departed', json.dumps(dict(record_id=record.lastrowid, unit_id=uid, serial=serial, destination=destination, reference=reference)))
                     db().execute('INSERT INTO unit_event_links VALUES(?,?,?,?)', (g.tenant['id'], ticket_id, uid, unit_event_id))
             if kind == 'depart' and state['departed'] + quantity == ticket['quantity']:
                 event(ticket_id, 'delivery_closed', 'All requested units physically departed; production acceptance remains preserved.')

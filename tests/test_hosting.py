@@ -71,3 +71,15 @@ def test_backup_failure_does_not_create_source(app, tmp_path):
     target = tmp_path/'snapshot.sqlite3'
     assert app.test_cli_runner().invoke(args=['backup-db',str(target)]).exit_code != 0
     assert not target.exists() and not Path(app.config['DATABASE']).exists()
+
+
+def test_cloud_origin_and_postgres_tls_fail_closed(monkeypatch,tmp_path):
+    production_env(monkeypatch,tmp_path)
+    monkeypatch.setenv('PR_PUBLIC_ORIGIN','https://other.example.com')
+    with pytest.raises(ValueError,match='PR_PUBLIC_ORIGIN'):create_app()
+    monkeypatch.setenv('PR_PUBLIC_ORIGIN','https://pilot.example.com')
+    monkeypatch.setenv('PR_DATABASE_URL','postgresql://runtime@db.example.test/app?sslmode=require')
+    with pytest.raises(ValueError,match='verify-full'):create_app()
+    monkeypatch.setenv('PR_DATABASE_URL','postgresql://runtime@db.example.test/app?sslmode=verify-full')
+    a=create_app()
+    assert a.config['PR_PUBLIC_ORIGIN']=='https://pilot.example.com'

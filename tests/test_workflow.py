@@ -1,4 +1,5 @@
 import re
+import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,10 +11,20 @@ from productionrunner import create_app
 
 @pytest.fixture
 def app(tmp_path):
-    app = create_app({'TESTING': True, 'SECRET_KEY': 'test-only', 'DATABASE': str(tmp_path / 'test.sqlite3')})
+    database=os.environ.get('PR_TEST_POSTGRES_URL') or str(tmp_path / 'test.sqlite3')
+    if os.environ.get('PR_TEST_POSTGRES_URL'):
+        from urllib.parse import urlsplit
+        parsed=urlsplit(database)
+        assert parsed.hostname in {'localhost','127.0.0.1'} and parsed.path.endswith('_test'), 'Only disposable local test databases are allowed'
+        import psycopg
+        with psycopg.connect(database,autocommit=True) as pg:
+            pg.execute('DROP SCHEMA IF EXISTS productionrunner CASCADE')
+    app = create_app({'TESTING': True, 'SECRET_KEY': 'test-only', 'DATABASE': database})
     assert app.test_cli_runner().invoke(args=['init-db']).exit_code == 0
     with sqlite3.connect(app.config['DATABASE']) as conn:
         conn.execute("INSERT INTO tenants(id,slug,name) VALUES(1,'alpha','Alpha')")
+        if os.environ.get('PR_TEST_POSTGRES_URL'):
+            conn.raw.execute("SELECT setval('productionrunner.tenants_id_seq',1,true)")
         for name, roles in [('planner', 'planner'), ('operator', 'operator,inspector'), ('inspector', 'inspector'), ('viewer', 'viewer'), ('admin', 'admin')]:
             user = conn.execute('INSERT INTO users(username,password_hash) VALUES(?,?)',
                                 (name, generate_password_hash('test-password-123')))
@@ -27,6 +38,14 @@ def sign_in(client, name, tenant="alpha"):
 
 
 def post(client, path, **data):
+    # Existing material fixtures provision their vocabulary through the admin API.
+    provision = data.pop('_provision_choices', True)
+    if path == '/admin/materials' and provision:
+        for field in ('metal','alloy','gauge','thickness_mm','finish','stock_size','required_service'):
+            if data.get(field):
+                post(client, '/admin/materials/choices', field=field, value=data[field], metal=data.get('metal',''), reason='Provision fixture vocabulary')
+    # Standard fixture evidence; tests for missing evidence explicitly pass an empty value.
+    data.setdefault('plan_evidence', 'Fixture checks verified against the approved criteria')
     with client.session_transaction() as session:
         data['csrf'] = session['csrf']
     return client.post(path, data=data)
@@ -77,6 +96,8 @@ def create_ticket(client, legacy=True, auto_request=True, **overrides):
 
 
 def rows(app, query, args=()):
+    if os.environ.get('PR_TEST_POSTGRES_URL') and query == 'PRAGMA foreign_key_check':
+        query="SELECT conname FROM pg_constraint WHERE connamespace='productionrunner'::regnamespace AND contype='f' AND NOT convalidated"
     with sqlite3.connect(app.config['DATABASE']) as conn:
         conn.row_factory = sqlite3.Row
         return conn.execute(query, args).fetchall()

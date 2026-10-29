@@ -10,6 +10,7 @@ import secrets
 from flask import abort, g, redirect, render_template, request, session, url_for, Response
 from .admin import epoch
 from .parts import MAX_PDF, MAX_DXF
+from .object_storage import prepare as prepare_file
 from .pin_auth import audit
 
 COLUMNS = ['pn', 'revision', 'description', 'drawing_file', 'dxf_file']
@@ -144,6 +145,21 @@ def register_import(app, db, roles_required, now):
         if request.method == 'GET':
             stage = owned(token)
             return render_template('part_import.html', report=json.loads(stage['report']), token=token, result=json.loads(stage['result']) if stage['result'] else None, keep=json.loads(stage['payload'])['keep'] if stage['payload'] else False)
+        # Upload outside the write lock, then recheck the preview and actor under lock.
+        staged_files = {}
+        if request.form.get('action') == 'confirm':
+            actor()
+            before = owned(token)
+            if not before['result']:
+                pending = json.loads(before['payload'])
+                checked = review(db(), g.tenant['id'], pending)
+                if checked != json.loads(before['report']):
+                    abort(409, 'The library changed since preview. Upload again.')
+                for row in checked:
+                    for flag, field, kind in [('create','drawing_file','pdf'),('add_dxf','dxf_file','dxf')]:
+                        if row[flag] and row[field] not in staged_files:
+                            file = pending['files'][row[field]]
+                            staged_files[row[field]] = prepare_file(g.tenant['id'], kind, base64.b64decode(file['data']))
         with db():
             db().execute('BEGIN IMMEDIATE')
             actor()
@@ -165,12 +181,14 @@ def register_import(app, db, roles_required, now):
                 added = []
                 if row['create']:
                     pdf = batch['files'][row['drawing_file']]
-                    db().execute('INSERT INTO part_revisions VALUES(?,?,?,?,?,?,?,?,?,?)', (part_id, g.tenant['id'], row['pn'], row['revision'], row['description'], base64.b64decode(pdf['data']), None, pdf['sha'], g.user['id'], now()))
+                    stored = staged_files[row['drawing_file']]
+                    db().execute('INSERT INTO part_revisions(id,tenant_id,pn,revision,description,drawing_pdf,drawing_url,sha256,created_by,created_at,object_key,object_size) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (part_id, g.tenant['id'], row['pn'], row['revision'], row['description'], stored[0], None, pdf['sha'], g.user['id'], now(), stored[1], stored[2]))
                     added.append(('pdf', 'part_revision_added'))
                     counts['created'] += 1
                 if row['add_dxf']:
                     dxf = batch['files'][row['dxf_file']]
-                    db().execute('INSERT INTO part_dxf VALUES(?,?,?,?,?,?)', (g.tenant['id'], part_id, base64.b64decode(dxf['data']), dxf['sha'], g.user['id'], now()))
+                    stored = staged_files[row['dxf_file']]
+                    db().execute('INSERT INTO part_dxf(tenant_id,part_revision_id,content,sha256,uploaded_by,uploaded_at,object_key,object_size) VALUES(?,?,?,?,?,?,?,?)', (g.tenant['id'], part_id, stored[0], dxf['sha'], g.user['id'], now(), stored[1], stored[2]))
                     added.append(('dxf', 'dxf_uploaded'))
                     counts['dxf_added'] += 1
                 if not added:

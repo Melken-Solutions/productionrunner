@@ -28,6 +28,14 @@ def snapshot(conn,tenant_id,ticket_id,operation_id,actor_id,timestamp,unit_id=No
     return f"Station: {a['station_name'] if a else 'unassigned legacy work'}; assigned operator: {(a['username'] or 'unassigned') if a else 'unassigned'}; actual operator ID: {actor_id}"
 
 
+def assign_named_stations(conn,tenant,ticket,event):
+    """Resolve route names selected from the admin catalog during creation."""
+    matches=conn.execute('SELECT o.id,o.name,s.id AS station_id FROM operations o JOIN stations s ON s.tenant_id=o.tenant_id AND s.name=o.name AND s.active=1 WHERE o.tenant_id=? AND o.ticket_id=? AND NOT EXISTS(SELECT 1 FROM outside_steps x WHERE x.tenant_id=o.tenant_id AND x.operation_id=o.id)',(tenant,ticket)).fetchall()
+    for op in matches:
+        conn.execute('INSERT INTO operation_assignments VALUES(?,?,?,?,NULL)',(tenant,ticket,op['id'],op['station_id']))
+        event(ticket,'operation_assigned',json.dumps(dict(operation=op['name'],station_id=op['station_id'],operator_id=None,reason='Route uses admin catalog station name')))
+
+
 def register_dispatch(app,db,roles_required,now,lock_ticket,event):
     def check_actor(allowed):
         from flask import session
@@ -51,7 +59,7 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
 
     @app.context_processor
     def dispatch_context():
-        return dict(route_attribution=route_attribution,dispatch_released=lambda ticket:released(db(),g.tenant['id'],ticket['id']),
+        return dict(planning_stations=lambda:db().execute('SELECT * FROM stations WHERE tenant_id=? AND active=1 ORDER BY name',(g.tenant['id'],)).fetchall(),route_attribution=route_attribution,dispatch_released=lambda ticket:released(db(),g.tenant['id'],ticket['id']),
                     operation_assignment=lambda op:assignment(db(),g.tenant['id'],op['id']))
 
     @app.get('/admin/stations')
@@ -90,6 +98,8 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
             old=db().execute('SELECT * FROM stations WHERE tenant_id=? AND id=?',(g.tenant['id'],station_id)).fetchone()
             if not old: abort(404,'Unknown station.')
             if request.form.get('version')!=str(old['version']): abort(409,'Station changed. Reload first.')
+            from .job_plan import station_in_use
+            if active=='0' and station_in_use(db(),g.tenant['id'],station_id):abort(409,'Station belongs to an open Job Plan. Finish/cancel the job or change its draft plan before deactivation.')
             if active=='0' and db().execute("SELECT 1 FROM operation_assignments a JOIN tickets t ON t.id=a.ticket_id AND t.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.station_id=? AND t.state!='accepted' AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id)",(g.tenant['id'],station_id)).fetchone():
                 abort(409,'Station is assigned to open work. Finish/cancel that work or reassign unfinished operations before deactivation.')
             try:
@@ -145,8 +155,14 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
             ticket=lock_ticket(ticket_id)
             check_actor({'planner','admin'})
             if released(db(),g.tenant['id'],ticket_id): abort(409,'Ticket is already released or is an existing legacy traveler.')
+            from .materials import require_service
+            require_service(db(),g.tenant['id'],ticket_id)
+            from .vendors import validate_ticket as validate_vendors
+            validate_vendors(db(),g.tenant['id'],ticket_id)
             missing=db().execute('SELECT 1 FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id WHERE o.tenant_id=? AND o.ticket_id=? AND NOT EXISTS(SELECT 1 FROM outside_steps x WHERE x.tenant_id=o.tenant_id AND x.operation_id=o.id) AND (s.id IS NULL OR s.active=0)',(g.tenant['id'],ticket_id)).fetchone()
             if missing: abort(409,'Assign an active station to every internal routing step before release.')
+            from .job_plan import release_check
+            release_check(db(),g.tenant['id'],ticket,event)
             db().execute('UPDATE ticket_dispatch SET released=1 WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id))
             db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?',(g.tenant['id'],ticket_id))
             event(ticket_id,'ticket_released',why)

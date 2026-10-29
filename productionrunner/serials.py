@@ -103,6 +103,8 @@ def register_serials(app, db, roles_required, now):
             require_dispatch(db(), unit['tenant_id'], unit['ticket_id'], operation['id'])
             from .work_tracking import finish_work
             ticket=db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',(unit['tenant_id'],unit['ticket_id'])).fetchone()
+            from .job_plan import evidence
+            evidence(db(),unit['tenant_id'],unit['ticket_id'],operation['id'],lambda tid,action,detail:unit_event(unit,action,detail),unit_id)
             finish_work(db(),unit['tenant_id'],ticket,operation,g.user['id'],now(),lambda tid,action,detail:unit_event(unit,action,detail),unit)
             db().execute('INSERT INTO unit_completions VALUES(?,?,?,?,?,?)',
                          (unit['tenant_id'], unit['ticket_id'], unit_id, operation['id'], g.user['id'], now()))
@@ -128,6 +130,8 @@ def register_serials(app, db, roles_required, now):
             result, notes = request.form.get('result'), request.form.get('notes', '').strip()
             if result not in {'pass', 'fail'} or not notes or len(notes) > 4000:
                 abort(400, 'Choose pass or fail and record evidence (up to 4000 characters).')
+            from .job_plan import evidence
+            evidence(db(),unit['tenant_id'],unit['ticket_id'],'inspection',lambda tid,action,detail:unit_event(unit,action,detail),unit_id,passing=result=='pass')
             db().execute('INSERT INTO unit_inspections VALUES(?,?,?,?,?,?,?)',
                          (unit['tenant_id'], unit['ticket_id'], unit_id, g.user['id'], result, notes, now()))
             update_unit_state(db(), unit, 'accepted' if result == 'pass' else 'held')

@@ -7,6 +7,9 @@ from flask import abort, g, redirect, render_template, request, session, url_for
 from .admin import epoch
 from .request_outside import get_plan, parse as outside_fields, save as save_outside
 
+from . import request_job_plan as request_plan
+from . import custom_fields
+
 SOURCES = ('manual', 'po', 'erp', 'email', 'smartsheet', 'other')
 EDIT_FIELDS = ('item_type', 'source', 'source_reference', 'requester', 'destination', 'required_date', 'pn', 'revision', 'quantity', 'description')
 
@@ -30,6 +33,12 @@ def approved_request(conn, tenant, rid, version=None):
         abort(409, 'This request is not approved for ticket creation, or already has a ticket.')
     if version is not None and str(row['version']) != version:
         abort(409, 'Request changed. Reopen the approved request before creating its ticket.')
+    from .materials import validate_request as validate_material
+    validate_material(conn,tenant,rid)
+    from .vendors import validate_request as validate_vendor
+    validate_vendor(conn,tenant,rid)
+    request_plan.validate(conn, tenant, rid)
+    custom_fields.validate(conn, tenant, rid)
     approval = conn.execute("SELECT detail FROM intake_events WHERE tenant_id=? AND request_id=? AND action='documents_approved' ORDER BY id DESC LIMIT 1", (tenant, rid)).fetchone()
     dxf = conn.execute('SELECT sha256 FROM part_dxf WHERE tenant_id=? AND part_revision_id=?', (tenant, row['part_id'])).fetchone()
     if not approval or json.loads(approval['detail']).get('dxf_sha256') != (dxf['sha256'] if dxf else None):
@@ -42,12 +51,13 @@ def log(conn, tenant, user, rid, action, detail, stamp):
 
 
 def link_ticket(conn, tenant, user, req, tid, stamp):
+    custom_fields.snapshot(conn,tenant,req["id"],tid)
     conn.execute("UPDATE intake_requests SET status='ticketed',ticket_id=?,version=version+1 WHERE tenant_id=? AND id=?", (tid, tenant, req['id']))
     log(conn, tenant, user, req['id'], 'ticket_created', dict(ticket_id=tid, approved_part=req['part_id']), stamp)
 
 
 def document_state(conn, tenant, row):
-    part = conn.execute('SELECT id,pn,revision,description,drawing_url,sha256,drawing_pdf IS NOT NULL AS has_pdf FROM part_revisions WHERE tenant_id=? AND pn=? AND revision=?', (tenant, row['pn'], row['revision'])).fetchone()
+    part = conn.execute('SELECT id,pn,revision,description,drawing_url,sha256,(drawing_pdf IS NOT NULL OR object_key IS NOT NULL) AS has_pdf FROM part_revisions WHERE tenant_id=? AND pn=? AND revision=?', (tenant, row['pn'], row['revision'])).fetchone()
     dxf = conn.execute('SELECT sha256 FROM part_dxf WHERE tenant_id=? AND part_revision_id=?', (tenant, part['id'])).fetchone() if part else None
     missing = []
     if not part:
@@ -63,7 +73,7 @@ def document_state(conn, tenant, row):
 def register_intake(app, db, roles_required, now):
     @app.context_processor
     def intake_context():
-        return dict(request_outside=lambda rid:get_plan(db(),g.tenant['id'],rid), request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
+        return dict(request_job_plan=lambda rid:request_plan.get(db(),g.tenant["id"],rid), request_outside=lambda rid:get_plan(db(),g.tenant['id'],rid), request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
 
     def fields():
         data = {key: request.form.get(key, '').strip() for key in EDIT_FIELDS}
@@ -119,8 +129,15 @@ def register_intake(app, db, roles_required, now):
             db().execute('BEGIN IMMEDIATE')
             actor(db(), g.tenant['id'], g.user['id'])
             db().execute('INSERT INTO intake_requests(id,tenant_id,' + ','.join(EDIT_FIELDS) + ',created_by,created_at) VALUES(' + ','.join('?' for _ in range(len(EDIT_FIELDS)+4)) + ')', (rid, g.tenant['id'], *(data[k] for k in EDIT_FIELDS), g.user['id'], now()))
+            from .materials import select_material,save_request
+            material=select_material(db(),g.tenant['id'],request.form)
+            save_request(db(),g.tenant['id'],rid,material)
             save_outside(db(), g.tenant['id'], rid, outside)
-            log(db(), g.tenant['id'], g.user['id'], rid, 'request_received', dict(data, outside_processing=outside), now())
+            custom=custom_fields.collect(db(),g.tenant['id'],request.form)
+            custom_fields.save(db(),g.tenant['id'],rid,custom)
+            plan = request_plan.parse(request.form)
+            request_plan.save(db(),g.tenant['id'],rid,plan)
+            log(db(), g.tenant['id'], g.user['id'], rid, 'request_received', dict(data, outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), now())
         return redirect(url_for('intake_detail', rid=rid))
 
     @app.get('/requests/<rid>')
@@ -148,11 +165,22 @@ def register_intake(app, db, roles_required, now):
             if row['status'] in {'ticketed', 'cancelled'} or str(row['version']) != request.form.get('version'):
                 abort(409, 'Request changed or cannot be edited. Reload it.')
             before = {key: row[key] for key in EDIT_FIELDS}
+            from .materials import select_material,save_request,request_material
+            material=select_material(db(),g.tenant['id'],request.form)
+            previous_material=request_material(db(),g.tenant['id'],rid)
+            if previous_material:previous_material={k:previous_material[k] for k in ('material_id','material_version','spec','planned_sheets','notes')}
             previous_outside=get_plan(db(),g.tenant['id'],rid)
-            if before != data or previous_outside != outside:
+            previous_plan=request_plan.get(db(),g.tenant['id'],rid)
+            plan=request_plan.parse(request.form,previous_plan)
+            previous_custom=custom_fields.saved(db(),g.tenant['id'],rid)
+            custom=custom_fields.collect(db(),g.tenant['id'],request.form,previous_custom)
+            if previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
                 db().execute('UPDATE intake_requests SET ' + ','.join(key+'=?' for key in EDIT_FIELDS) + ",status='preparing',part_id=NULL,approved_by=NULL,approved_at=NULL,version=version+1 WHERE tenant_id=? AND id=?", (*(data[k] for k in EDIT_FIELDS), g.tenant['id'], rid))
+                save_request(db(),g.tenant['id'],rid,material)
                 save_outside(db(),g.tenant['id'],rid,outside)
-                log(db(), g.tenant['id'], g.user['id'], rid, 'request_edited', dict(before=dict(before,outside_processing=previous_outside), after=dict(data,outside_processing=outside), reason=why, approval_invalidated=row['status']=='approved'), now())
+                request_plan.save(db(),g.tenant['id'],rid,plan)
+                custom_fields.save(db(),g.tenant['id'],rid,custom)
+                log(db(), g.tenant['id'], g.user['id'], rid, 'request_edited', dict(before=dict(before,outside_processing=previous_outside,material=previous_material,job_plan=previous_plan,custom_fields=previous_custom), after=dict(data,outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), reason=why, approval_invalidated=row['status']=='approved'), now())
         return redirect(url_for('intake_detail', rid=rid))
 
     @app.post('/requests/<rid>/decision')
@@ -169,6 +197,12 @@ def register_intake(app, db, roles_required, now):
             if action == 'approve':
                 if row['status'] == 'approved':
                     abort(409, 'Request already approved.')
+                from .materials import validate_request as validate_material
+                validate_material(db(),g.tenant['id'],rid)
+                from .vendors import validate_request as validate_vendor
+                validate_vendor(db(),g.tenant['id'],rid)
+                request_plan.validate(db(),g.tenant['id'],rid)
+                custom_fields.validate(db(),g.tenant['id'],rid)
                 docs = document_state(db(), g.tenant['id'], row)
                 if not docs['ready']:
                     abort(409, 'Upload the required matching production documents before approval.')

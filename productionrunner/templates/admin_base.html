@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block body_class %}admin-workspace{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static',filename='admin.css') }}"><script src="{{ url_for('static',filename='admin.js') }}" defer></script>{% endblock %}
+{% block content %}
+<div class="admin-shell">
+<aside class="admin-sidebar"><a class="admin-home" href="{{ url_for('admin_dashboard') }}">Organization settings <span>{{ g.tenant.name }}</span></a>
+<nav aria-label="Administration">
+{% for group,links in [('Workspace',[('admin_dashboard','Overview'),('onboarding','Getting started'),('invitations','Invite your team'),('shop_setup','Set up your shop'),('custom_fields_admin','Custom fields'),('admin_organization','Organization'),('admin_branding','Brand & appearance'),('admin_users','People & access')]),('Production setup',[('materials_admin','Materials'),('material_choices_admin','Material choices'),('stations_admin','Stations'),('vendors_admin','Outside vendors'),('workflow_admin','Workflow defaults'),('work_admin','Timing & reasons')]),('Documents & insight',[('import_parts','Import drawings'),('storage_admin','Storage & retention'),('work_report','Station reports'),('security_history','Security history')])] %}
+<p class="admin-nav-label">{{ group }}</p>{% for endpoint,label in links %}<a href="{{ url_for(endpoint) }}" {% if request.endpoint==endpoint or (endpoint=='admin_users' and request.endpoint=='admin_user') %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}{% endfor %}
+</nav><a class="admin-exit" href="{{ url_for('index') }}">← Back to production</a></aside>
+<div class="admin-main">{% block admin_content %}{% endblock %}</div>
+</div>{% endblock %}

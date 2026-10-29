@@ -103,9 +103,11 @@ CREATE TABLE IF NOT EXISTS part_revisions (
  id TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL, pn TEXT NOT NULL, revision TEXT NOT NULL,
  description TEXT NOT NULL, drawing_pdf BLOB, drawing_url TEXT, sha256 TEXT,
  created_by INTEGER NOT NULL, created_at TEXT NOT NULL,
+ object_key TEXT, object_size INTEGER,
  UNIQUE(tenant_id,pn,revision), UNIQUE(tenant_id,id),
- CHECK((drawing_pdf IS NOT NULL AND drawing_url IS NULL AND sha256 IS NOT NULL) OR
-       (drawing_pdf IS NULL AND drawing_url IS NOT NULL AND sha256 IS NULL)),
+ CHECK((drawing_pdf IS NOT NULL AND drawing_url IS NULL AND sha256 IS NOT NULL AND object_key IS NULL AND object_size IS NULL) OR
+       (drawing_pdf IS NULL AND drawing_url IS NOT NULL AND sha256 IS NULL AND object_key IS NULL AND object_size IS NULL) OR
+       (drawing_pdf IS NULL AND drawing_url IS NULL AND sha256 IS NOT NULL AND object_key IS NOT NULL AND object_size>0 AND object_size IS NOT NULL)),
  FOREIGN KEY(tenant_id,created_by) REFERENCES memberships(tenant_id,user_id)
 );
 CREATE TABLE IF NOT EXISTS ticket_drawings (
@@ -126,8 +128,10 @@ CREATE TRIGGER IF NOT EXISTS ticket_drawing_no_delete BEFORE DELETE ON ticket_dr
 CREATE TRIGGER IF NOT EXISTS part_event_no_update BEFORE UPDATE ON part_events BEGIN SELECT RAISE(ABORT,'Part events are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS part_event_no_delete BEFORE DELETE ON part_events BEGIN SELECT RAISE(ABORT,'Part events are immutable'); END;
 CREATE TABLE IF NOT EXISTS part_dxf (
- tenant_id INTEGER NOT NULL, part_revision_id TEXT PRIMARY KEY, content BLOB NOT NULL,
+ tenant_id INTEGER NOT NULL, part_revision_id TEXT PRIMARY KEY, content BLOB,
  sha256 TEXT NOT NULL, uploaded_by INTEGER NOT NULL, uploaded_at TEXT NOT NULL,
+ object_key TEXT, object_size INTEGER,
+ CHECK((content IS NOT NULL AND object_key IS NULL AND object_size IS NULL) OR (content IS NULL AND object_key IS NOT NULL AND object_size>0 AND object_size IS NOT NULL)),
  FOREIGN KEY(tenant_id,part_revision_id) REFERENCES part_revisions(tenant_id,id),
  FOREIGN KEY(tenant_id,uploaded_by) REFERENCES memberships(tenant_id,user_id)
 );
@@ -507,3 +511,109 @@ CREATE TABLE IF NOT EXISTS request_outside (
 CREATE TRIGGER IF NOT EXISTS request_outside_frozen_insert BEFORE INSERT ON request_outside WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=NEW.tenant_id AND id=NEW.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled outside plans are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS request_outside_frozen_update BEFORE UPDATE ON request_outside WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled outside plans are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS request_outside_frozen_delete BEFORE DELETE ON request_outside WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled outside plans are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS materials (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+ name TEXT NOT NULL,metal TEXT NOT NULL,gauge TEXT NOT NULL,finish TEXT NOT NULL,
+ alloy TEXT NOT NULL,thickness_mm TEXT NOT NULL,stock_size TEXT NOT NULL,handling TEXT NOT NULL,required_service TEXT NOT NULL,
+ active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,id),UNIQUE(tenant_id,name)
+);
+CREATE TABLE IF NOT EXISTS request_materials (
+ tenant_id INTEGER NOT NULL,request_id TEXT PRIMARY KEY,material_id INTEGER NOT NULL,material_version INTEGER NOT NULL,spec TEXT NOT NULL,planned_sheets TEXT NOT NULL,notes TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,request_id) REFERENCES intake_requests(tenant_id,id),
+ FOREIGN KEY(tenant_id,material_id) REFERENCES materials(tenant_id,id)
+);
+CREATE TRIGGER IF NOT EXISTS request_materials_no_update BEFORE UPDATE ON request_materials WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Material evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_materials_no_delete BEFORE DELETE ON request_materials WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Material evidence is immutable'); END;
+CREATE TABLE IF NOT EXISTS ticket_materials (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT PRIMARY KEY,material_id INTEGER NOT NULL,material_version INTEGER NOT NULL,spec TEXT NOT NULL,planned_sheets TEXT NOT NULL,notes TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,material_id) REFERENCES materials(tenant_id,id)
+);
+CREATE TRIGGER IF NOT EXISTS ticket_materials_no_update BEFORE UPDATE ON ticket_materials BEGIN SELECT RAISE(ABORT,'Material evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS ticket_materials_no_delete BEFORE DELETE ON ticket_materials BEGIN SELECT RAISE(ABORT,'Material evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_materials_frozen_insert BEFORE INSERT ON request_materials WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=NEW.tenant_id AND id=NEW.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Material evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS vendors (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+ name TEXT NOT NULL COLLATE NOCASE,services TEXT NOT NULL,
+ active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,name)
+);
+
+CREATE TABLE IF NOT EXISTS job_plans (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,data TEXT NOT NULL,
+ actor_id INTEGER NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS job_plans_ticket ON job_plans(tenant_id,ticket_id,id);
+CREATE TRIGGER IF NOT EXISTS job_plans_no_update BEFORE UPDATE ON job_plans BEGIN SELECT RAISE(ABORT,'Plan revisions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS job_plans_no_delete BEFORE DELETE ON job_plans BEGIN SELECT RAISE(ABORT,'Plan revisions are immutable'); END;
+CREATE TABLE IF NOT EXISTS first_piece_results (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,operation_id INTEGER NOT NULL,
+ plan_id INTEGER NOT NULL REFERENCES job_plans(id),station_id INTEGER NOT NULL,result TEXT NOT NULL CHECK(result IN ('pass','fail')),
+ notes TEXT NOT NULL,actor_id INTEGER NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,operation_id) REFERENCES operations(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,station_id) REFERENCES stations(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS first_piece_operation ON first_piece_results(tenant_id,ticket_id,operation_id,id);
+CREATE TRIGGER IF NOT EXISTS first_piece_no_update BEFORE UPDATE ON first_piece_results BEGIN SELECT RAISE(ABORT,'First-piece evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS first_piece_no_delete BEFORE DELETE ON first_piece_results BEGIN SELECT RAISE(ABORT,'First-piece evidence is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS request_job_plans (
+ tenant_id INTEGER NOT NULL, request_id TEXT PRIMARY KEY, data TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,request_id) REFERENCES intake_requests(tenant_id,id)
+);
+CREATE TRIGGER IF NOT EXISTS request_job_plan_frozen_insert BEFORE INSERT ON request_job_plans WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=NEW.tenant_id AND id=NEW.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled plans are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_job_plan_frozen_update BEFORE UPDATE ON request_job_plans WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled plans are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_job_plan_frozen_delete BEFORE DELETE ON request_job_plans WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Converted or cancelled plans are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS material_choices (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+ field TEXT NOT NULL CHECK(field IN ('metal','alloy','gauge','thickness_mm','finish','stock_size','required_service')),
+ value TEXT NOT NULL, metal TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,field,value,metal)
+);
+INSERT OR IGNORE INTO material_choices(tenant_id,field,value,metal) SELECT tenant_id,'metal',metal,'' FROM materials WHERE metal<>'';
+INSERT OR IGNORE INTO material_choices(tenant_id,field,value,metal) SELECT tenant_id,'alloy',alloy,metal FROM materials WHERE alloy<>'';
+INSERT OR IGNORE INTO material_choices(tenant_id,field,value,metal) SELECT tenant_id,'gauge',gauge,metal FROM materials WHERE gauge<>'';
+INSERT OR IGNORE INTO material_choices(tenant_id,field,value,metal) SELECT tenant_id,'thickness_mm',thickness_mm,metal FROM materials WHERE thickness_mm<>'';
+INSERT OR IGNORE INTO material_choices(tenant_id,field,value,metal) SELECT tenant_id,'finish',finish,metal FROM materials WHERE finish<>'';
+INSERT OR IGNORE INTO material_choices(tenant_id,field,value,metal) SELECT tenant_id,'stock_size',stock_size,'' FROM materials WHERE stock_size<>'';
+INSERT OR IGNORE INTO material_choices(tenant_id,field,value,metal) SELECT tenant_id,'required_service',required_service,'' FROM materials WHERE required_service<>'';
+
+CREATE TABLE IF NOT EXISTS custom_field_definitions (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL REFERENCES tenants(id),label TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN ('text','number','date','select','boolean')),options TEXT NOT NULL,
+ required INTEGER NOT NULL DEFAULT 0 CHECK(required IN (0,1)),active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,label)
+);
+CREATE TABLE IF NOT EXISTS request_custom_fields (
+ tenant_id INTEGER NOT NULL,request_id TEXT PRIMARY KEY,data TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,request_id) REFERENCES intake_requests(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS ticket_custom_fields (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT PRIMARY KEY,data TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id)
+);
+CREATE TRIGGER IF NOT EXISTS ticket_custom_fields_no_update BEFORE UPDATE ON ticket_custom_fields BEGIN SELECT RAISE(ABORT,'Job custom field snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS ticket_custom_fields_no_delete BEFORE DELETE ON ticket_custom_fields BEGIN SELECT RAISE(ABORT,'Job custom field snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_custom_fields_frozen_insert BEFORE INSERT ON request_custom_fields WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=NEW.tenant_id AND id=NEW.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Closed request fields are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_custom_fields_frozen_update BEFORE UPDATE ON request_custom_fields WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Closed request fields are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS request_custom_fields_frozen_delete BEFORE DELETE ON request_custom_fields WHEN EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND id=OLD.request_id AND status IN ('ticketed','cancelled')) BEGIN SELECT RAISE(ABORT,'Closed request fields are immutable'); END;
+
+-- Organization onboarding and hashed, expiring invitation credentials.
+CREATE TABLE IF NOT EXISTS onboarding_steps (
+ tenant_id INTEGER NOT NULL REFERENCES tenants(id), step TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('todo','later','reviewed')), PRIMARY KEY(tenant_id,step)
+);
+CREATE TABLE IF NOT EXISTS employee_invitations (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+ username TEXT NOT NULL, roles TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+ expires_at REAL NOT NULL, created_by INTEGER NOT NULL REFERENCES users(id),
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','revoked'))
+);
+CREATE INDEX IF NOT EXISTS invitations_tenant ON employee_invitations(tenant_id,id);

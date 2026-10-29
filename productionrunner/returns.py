@@ -23,8 +23,7 @@ def register_returns(app, db, roles_required, now, lock_ticket, event):
         detail = json.dumps(dict(return_id=return_id, **detail))
         event(ticket_id, action, detail)
         for uid in units:
-            event(ticket_id, 'unit_'+action, detail)
-            eid = db().execute('SELECT last_insert_rowid()').fetchone()[0]
+            eid = event(ticket_id, 'unit_'+action, detail)
             db().execute('INSERT INTO unit_event_links VALUES(?,?,?,?)', (g.tenant['id'], ticket_id, uid, eid))
         db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?', (g.tenant['id'], ticket_id))
 

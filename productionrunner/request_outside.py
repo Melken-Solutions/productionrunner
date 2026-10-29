@@ -23,6 +23,8 @@ def parse(form):
 
 
 def save(conn,tenant,rid,plan):
+    from .vendors import validate
+    if plan:validate(conn,tenant,plan['vendor'],plan['service'])
     conn.execute('DELETE FROM request_outside WHERE tenant_id=? AND request_id=?',(tenant,rid))
     if plan:conn.execute('INSERT INTO request_outside VALUES(?,?,?,?,?,?,?,?)',(tenant,rid,*(plan[k] for k in FIELDS)))
 
@@ -30,6 +32,8 @@ def save(conn,tenant,rid,plan):
 def apply(conn,tenant,rid,tid,sequence,event):
     plan=get_plan(conn,tenant,rid)
     if not plan:return
+    from .vendors import validate
+    validate(conn,tenant,plan['vendor'],plan['service'])
     try:seq=int(sequence)
     except (ValueError,TypeError):abort(400,'Choose the routing step number for the requested outside processing.')
     op=conn.execute('SELECT id FROM operations WHERE tenant_id=? AND ticket_id=? AND sequence=?',(tenant,tid,seq)).fetchone()

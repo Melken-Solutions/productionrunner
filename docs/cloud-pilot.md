@@ -1,3 +1,5 @@
+> PostgreSQL implementation update: see [migration and recovery](postgresql-migration.md). The older SQLite pilot guidance below is retained for local/single-instance installations; it does not describe a completed Render/Supabase deployment.
+
 # Cloud subscription product — first customer pilot
 
 ## Product ownership and deployment direction

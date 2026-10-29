@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'admin_base.html' %}{% block admin_content %}
 <p><a href="{{ url_for('admin_dashboard') }}">← Admin portal</a></p><h1>Organization management</h1><p><a class="button" href="{{ url_for('admin_branding') }}">Branding: logo, display name &amp; colors</a></p>
 {% if saved %}<p class="badge accepted" role="status">Organization details saved.</p>{% endif %}
 <section class="card"><h2>{{ organization.name }}</h2><p><strong>Organization sign-in code:</strong> <code>{{ organization.slug }}</code></p><p>This code stays the same when you rename the organization. Contact details are for your organization’s profile; saving them does not send messages.</p></section>

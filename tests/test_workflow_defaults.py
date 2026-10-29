@@ -33,7 +33,7 @@ def test_preview_is_unsaved_and_defaults_are_not_retroactive(app):
  sign_in(c,'planner');third=create_ticket(c,workflow_version='2').location.split('/')[-1]
  assert len(rows(app,'SELECT * FROM fulfillment_checks WHERE ticket_id=?',(new,)))==2
  assert not rows(app,'SELECT * FROM fulfillment_checks WHERE ticket_id=?',(third,))
- versions=rows(app,'SELECT policy_version FROM ticket_workflow ORDER BY rowid')
+ versions=[rows(app,'SELECT policy_version FROM ticket_workflow WHERE ticket_id=?',(tid,))[0] for tid in (old,new,third)]
  assert [r[0] for r in versions]==[0,1,2]
  assert len(rows(app,"SELECT * FROM auth_events WHERE action='workflow_defaults_updated'"))==2
  assert app.test_cli_runner().invoke(args=['init-db']).exit_code==0

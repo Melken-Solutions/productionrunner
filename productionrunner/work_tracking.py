@@ -113,9 +113,8 @@ def register_work_tracking(app,db,roles_required,now,event):
 
     def emit(session):
         def write(tid,action,detail):
-            event(tid,action,detail)
+            eid = event(tid,action,detail)
             if session['unit_id']:
-                eid=db().execute('SELECT last_insert_rowid()').fetchone()[0]
                 db().execute('INSERT INTO unit_event_links VALUES(?,?,?,?)',(g.tenant['id'],tid,session['unit_id'],eid))
         return write
 
@@ -144,6 +143,8 @@ def register_work_tracking(app,db,roles_required,now,event):
                     if active:abort(409,'This operation already has a station session.')
                     if any(s['station_id']==a['station_id'] for s in sessions):abort(409,'This station is reserved. Stop its other session first.')
                     mode=request.form.get('mode')
+                    from .job_plan import require_first_piece
+                    if mode!='setup':require_first_piece(db(),g.tenant['id'],ticket['id'],op['id'])
                     if mode not in MODES:abort(400,'Choose setup, attended production or unattended machine run.')
                     if mode!='machine' and any(s['action']!='pause' and s['mode']!='machine' and s['actor_id']==g.user['id'] for s in sessions):abort(409,'Pause or stop your other attended session first.')
                     hot=db().execute('SELECT priority FROM ticket_priorities WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket['id'])).fetchone()
@@ -152,6 +153,8 @@ def register_work_tracking(app,db,roles_required,now,event):
                 else:
                     if not active or request.form.get('session_version')!=str(active['last_event_id']):abort(409,'Work session changed. Reload.')
                     if action=='resume':
+                        from .job_plan import require_first_piece
+                        if active['mode']!='setup':require_first_piece(db(),g.tenant['id'],ticket['id'],op['id'])
                         if active['action']!='pause':abort(409,'Only paused work can resume.')
                         if active['mode']!='machine' and any(s['action']!='pause' and s['mode']!='machine' and s['actor_id']==g.user['id'] for s in sessions):abort(409,'Pause or stop your other attended session first.')
                     elif action in {'pause','stop'}:
