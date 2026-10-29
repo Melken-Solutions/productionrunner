@@ -1,6 +1,6 @@
 # PostgreSQL migration and recovery
 
-Status: PostgreSQL support is implemented and verified against isolated PostgreSQL 17. The dedicated **ProductionRunner Staging** Supabase project (`imhplsizgijerkqemxjy`, Melken Solutions, `us-east-1`) has been created and its initial schema applied. No Render web service is deployed yet. SQLite remains the local installation's default; no customer data has been imported into staging.
+Status: PostgreSQL support is implemented and verified against isolated PostgreSQL 17. The dedicated **ProductionRunner Staging** Supabase project (`imhplsizgijerkqemxjy`, Melken Solutions, `us-east-1`) has been created and its initial schema applied. The Render staging web service is live (see deployment record below). SQLite remains the local installation's default; no customer data has been imported into staging.
 
 Staging verification: 74 application/migration tables, 86 workflow/audit triggers, three checksummed application migrations, and zero tickets. Neither `anon` nor `authenticated` has schema access; the runtime role cannot create schema objects. Supabase's security advisor reported no findings. Its performance advisor reported missing foreign-key indexes that require review before load acceptance, plus unused-index notices expected for an empty database; do not remove those indexes based on empty-project statistics.
 
@@ -37,11 +37,11 @@ A local synthetic rehearsal restored all 74 application/migration tables and ver
 
 ## Remaining cloud gates
 
-- Transfer the verified runtime connection to Render secret configuration; project, schema, restricted login and private bucket provisioning are complete.
+- Complete the hosted production acceptance checklist; restricted database credentials and private storage secrets are configured on Render staging.
 - Verified object backup/restore and safe orphan reconciliation; private PDF/DXF routes are integrated, while retention remains preview-only.
 - Public HTTPS origin, email delivery, account recovery and privileged MFA.
 - Provider backup policies, off-host file backups, restore drill on hosted staging, uptime/error alerts and incident owner.
-- Render staging configuration and reviewed source push; no merge without review.
+- Review the draft PR before any merge; the feature branch is deployed only to staging.
 - Full hosted acceptance test, a second synthetic organization, and concurrent TV/station load.
 
 PN routing automation remains a product enhancement; it is not required to turn a verified staging deployment on.
@@ -52,7 +52,7 @@ The `productionrunner_app` login inherits `productionrunner_runtime`, has no ele
 
 The `productionrunner-files` bucket is private, capped at 20 MiB per object, with PDF, binary DXF and normalized PNG MIME types allowed. A disposable probe passed authenticated upload/download with identical bytes, while public and unauthenticated reads were denied; the probe was then deleted. No browser/client grants were added. The server-only secret key bypasses Storage RLS: application tenant authorization must precede every object operation. PDF/DXF single uploads and bulk confirmations now use private storage when `PR_FILE_STORAGE=supabase`. Existing embedded files remain readable. Logos and temporary bulk-preview payloads remain in the database. Retention deletion and a full object-storage recovery drill are not implemented.
 
-`render.yaml` describes a single Virginia Python web service using the existing Waitress entry point, four request threads, manual deploys and database readiness checks. The free compute plan is for staging configuration only; validate capacity and choose an always-on plan before shop-floor use. This file has not been synced or deployed. Source review/push, secret transfer, canonical host/origin configuration and full hosted acceptance remain required. Never run migrations at web startup with the runtime identity.
+`render.yaml` describes a single Virginia Python web service using the existing Waitress entry point, four request threads, manual deploys and database readiness checks. The free compute plan is for staging configuration only; validate capacity and choose an always-on plan before shop-floor use. The corresponding service has been created through the Render CLI with a secret file. Full hosted production acceptance remains required. Never run migrations at web startup with the runtime identity.
 
 ## Private file behavior and recovery
 
@@ -73,3 +73,14 @@ The Render entry point is `python -m productionrunner.render_serve`. It accepts 
 For the CLI-created staging service, supply a private `productionrunner.json` secret file and `PR_SECRET_FILE=/etc/secrets/productionrunner.json`; use a database URL with `sslrootcert=deploy/supabase-ca.crt`. The credentials must not contain a developer-machine path. Nonsecret environment settings are `PR_ENV=production`, `PR_HTTPS=1`, `PR_BIND_HOST=0.0.0.0`. No database migrations run on startup. `render.yaml` remains the reproducible configuration reference; a later Blueprint adoption must reconcile the existing secret-file configuration rather than creating a second service or replacing secrets with empty values.
 
 Deploy the feature branch for staging; do not merge the draft PR without review. Keep automatic deploys disabled until hosted acceptance and the production recovery/authentication gates are complete.
+
+## First hosted staging deployment — October 29, 2026
+
+- Workspace: Melken TechWork (`tea-dbg7l1ifngtc738uct0g`).
+- Service: `productionrunner-staging` (`srv-dbhiumu7bikc73eomd10`), Virginia, free staging compute, automatic deployment off.
+- URL: https://productionrunner-staging.onrender.com
+- Live application commit: `19485c1de3d6c83ae971c97576f5ce0dbd97a509` on `feat/provisional-jobrunner-mvp`.
+- Deploy: `dep-dbhiunm7bikc73eomeb0`, verified `live`.
+- Verified HTTPS `/health/ready`, successful first-admin sign-in, `/admin/getting-started`, `/requests/new`, `/parts`, and Secure/HttpOnly session cookies. Recent runtime logs showed no startup errors.
+- The user-approved initial shop is **Melken Pilot** (`melken-pilot`), with `kfelder` assigned admin and planner. Its generated password is kept only in ignored `instance/staging-admin-login.json` with mode 0600. No production tickets were created.
+- Draft PR #1 remains open and unmerged. This is a pilot test deployment, not production sign-off. Account recovery/MFA, object backup/restore, safe cleanup, a second-tenant acceptance exercise, concurrency/TV load and shop-floor hardware qualification remain outstanding.
