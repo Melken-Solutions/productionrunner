@@ -88,7 +88,7 @@ def board_data(conn,tenant_id,station_id=None):
 def register_tv(app,db,roles_required,now):
     @app.before_request
     def restrict_display_account():
-        if 'display' in getattr(g,'roles',[]) and request.endpoint not in {'static','login','logout','tv_boards','tv_board','tv_data','brand_logo'}:
+        if 'display' in getattr(g,'roles',[]) and request.endpoint not in {'static','login','logout','tv_boards','tv_board','tv_data','brand_logo','account_security'}:
             abort(403,'This display account can only view TV boards.')
 
     def selected_station():

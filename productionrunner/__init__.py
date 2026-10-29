@@ -192,6 +192,8 @@ def create_app(config=None):
     register_controls(app, db, roles_required, now, lock_ticket)
     from .pin_auth import authenticate, register_pin_auth
     register_pin_auth(app, db, roles_required)
+    from .account_security import register_account_security
+    register_account_security(app, db)
     from .serials import create_units, units_for, register_serials
     register_serials(app, db, roles_required, now)
     from .parts import register_parts, find_part, matching_part, FIELDS

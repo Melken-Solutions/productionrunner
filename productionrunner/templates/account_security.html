@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% block content %}
+<section class="narrow"><p class="eyebrow">YOUR ACCOUNT</p><h1>Account security</h1>
+<p>{% if platform %}Manage your platform password. Platform accounts do not use shop-floor PINs.{% else %}Your password applies to your account across organizations. Your PIN applies only to {{ g.tenant.name }}.{% endif %}</p>
+<p>Enter your current password to make changes. After saving, sign in again. Password changes sign out all your sessions; PIN changes sign out sessions for this organization.</p>
+{% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+{% for action, label in [('password', 'Change password')] + ([] if platform else [('pin', 'Set or change PIN'), ('disable_pin', 'Disable PIN')]) %}
+<section class="card"><h2>{{ label }}</h2><form method="post" class="stack">
+<input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="action" value="{{ action }}">
+<label>Current password<input type="password" name="current_password" required autocomplete="current-password" maxlength="256"></label>
+{% if action != 'disable_pin' %}
+<label>New {{ 'password' if action == 'password' else 'PIN' }}<input type="password" name="new_credential" required {% if action == 'password' %}autocomplete="new-password" minlength="12" maxlength="256"{% else %}autocomplete="off" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" data-lpignore="true" data-1p-ignore{% endif %}></label>
+<label>Confirm {{ 'password' if action == 'password' else 'PIN' }}<input type="password" name="confirm_credential" required {% if action == 'password' %}autocomplete="new-password" minlength="12" maxlength="256"{% else %}autocomplete="off" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" data-lpignore="true" data-1p-ignore{% endif %}></label>
+{% endif %}<button>{{ label }}</button></form></section>{% endfor %}</section>{% endblock %}
