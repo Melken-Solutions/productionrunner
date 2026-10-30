@@ -83,6 +83,8 @@ def create_app(config=None):
             request.max_content_length = 4 * 1024 * 1024
         elif request.endpoint == 'import_parts':
             request.max_content_length = 51 * 1024 * 1024
+        elif request.endpoint == 'upload_shipping_labels':
+            request.max_content_length = 11 * 1024 * 1024
         elif request.endpoint == 'upload_dxf':
             request.max_content_length = 21 * 1024 * 1024
         elif request.endpoint != 'new_part':
@@ -194,6 +196,8 @@ def create_app(config=None):
     register_pin_auth(app, db, roles_required)
     from .account_security import register_account_security
     register_account_security(app, db)
+    from .shipping import register_shipping
+    register_shipping(app, db, roles_required, now, event)
     from .serials import create_units, units_for, register_serials
     register_serials(app, db, roles_required, now)
     from .parts import register_parts, find_part, matching_part, FIELDS

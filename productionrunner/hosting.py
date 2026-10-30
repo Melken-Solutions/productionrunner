@@ -11,7 +11,7 @@ from flask import jsonify
 from .database import is_postgres, connect as open_database
 
 
-REQUIRED_TABLES = ('job_plans', 'first_piece_results', 'vendors', 'materials', 'request_materials', 'ticket_materials', 'request_outside', 'outside_steps', 'outside_moves', 'outside_inspections', 'jobrunner_sequences', 'users', 'tenants', 'memberships', 'tickets', 'operations', 'events',
+REQUIRED_TABLES = ('shipping_destinations', 'shipping_rules', 'shipping_plans', 'shipping_loads', 'shipping_boxes', 'shipping_labels', 'shipping_departures', 'shipping_events', 'job_plans', 'first_piece_results', 'vendors', 'materials', 'request_materials', 'ticket_materials', 'request_outside', 'outside_steps', 'outside_moves', 'outside_inspections', 'jobrunner_sequences', 'users', 'tenants', 'memberships', 'tickets', 'operations', 'events',
                    'serial_units', 'part_revisions', 'part_dxf', 'organization_branding',
                    'stations', 'operation_assignments', 'ticket_dispatch', 'developer_accounts',
                    'storage_policies', 'storage_file_controls', 'part_imports', 'fulfillment_records', 'fulfillment_units',

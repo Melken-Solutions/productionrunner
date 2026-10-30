@@ -114,6 +114,8 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
                 abort(409, 'Reverse the newest unreversed movement first. This entry is already reversed or has later activity.')
             if db().execute('SELECT 1 FROM customer_returns WHERE tenant_id=? AND departure_id=?', (g.tenant['id'],record_id)).fetchone():
                 abort(409, 'This departure has customer returns and cannot be reversed.')
+            if db().execute('SELECT 1 FROM shipping_boxes WHERE tenant_id=? AND pack_record_id=? AND voided=0',(g.tenant['id'],record_id)).fetchone() or db().execute('SELECT 1 FROM shipping_departures WHERE tenant_id=? AND record_id=?',(g.tenant['id'],record_id)).fetchone():
+                abort(409,'This movement belongs to a shipping box or shipment; it cannot be reversed independently.')
             state = progress(db(), g.tenant['id'], ticket)
             linked = db().execute('SELECT unit_id FROM fulfillment_active_units WHERE tenant_id=? AND record_id=?', (g.tenant['id'], record_id)).fetchall()
             db().execute('INSERT INTO fulfillment_reversals VALUES(?,?,?,?,?,?,?)', (g.tenant['id'], ticket_id, record_id, record['kind'], g.user['id'], reason, now()))
@@ -151,6 +153,8 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             state = progress(db(), g.tenant['id'], ticket)
             if state['closed']:
                 abort(409, 'All units have already departed.')
+            if kind=='depart' and db().execute('SELECT 1 FROM shipping_boxes WHERE tenant_id=? AND ticket_id=? AND voided=0',(g.tenant['id'],ticket_id)).fetchone():
+                abort(409,'Dispatch boxed goods from their shipping manifest so labels and quantities stay matched.')
             pending = db().execute('SELECT stage FROM fulfillment_checks c WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)', (g.tenant['id'], ticket_id)).fetchall()
             if any(c['stage'] == 'pack' or kind == 'depart' for c in pending):
                 abort(409, 'Complete the required checkpoints for this stage first.')

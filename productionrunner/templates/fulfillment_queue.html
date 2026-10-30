@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% block content %}
 <p><a href="{{ url_for('returns_queue') }}">Customer returns / material on hold</a></p>
-<h1>Packing &amp; dispatch</h1><p>Production acceptance does not close a job. Track it until all units leave the building.</p>
+<h1>Packing &amp; dispatch</h1><p><a class="button" href="{{ url_for('shipping_queue') }}">Shipping handoff — labels &amp; pallets</a></p><p>Production acceptance does not close a job. Track it until all units leave the building.</p>
 <p><a href="{{ url_for('fulfillment_queue') }}">Open jobs</a> · <a href="{{ url_for('fulfillment_queue',view='closed') }}">Departed / closed jobs</a></p>
 <div class="table-wrap"><table><thead><tr><th>Job / PN</th><th>Priority</th><th>Delivery stage</th><th>Ordered</th><th>Accepted</th><th>Packed total</th><th>Departed</th><th>Remaining onsite / to produce</th></tr></thead><tbody>{% for item in items %}{% set t=item.ticket %}{% set d=item.delivery %}<tr><td><a href="{{ url_for('delivery_detail',ticket_id=t.id) }}">{{ t.id }}</a><br>{{ t.pn }} · {{ t.revision }}</td><td>{{ 'HOT ' ~ t.hot_priority if t.hot_priority is not none else 'Normal' }}</td><td>{{ d.status }}</td><td>{{ t.quantity }}</td><td>{{ d.accepted }}</td><td>{{ d.packed }}</td><td>{{ d.departed }}</td><td>{{ d.remaining }}</td></tr>{% else %}<tr><td colspan="8">No {{ view }} jobs.</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

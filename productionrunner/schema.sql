@@ -617,3 +617,86 @@ CREATE TABLE IF NOT EXISTS employee_invitations (
  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','revoked'))
 );
 CREATE INDEX IF NOT EXISTS invitations_tenant ON employee_invitations(tenant_id,id);
+
+CREATE TABLE IF NOT EXISTS shipping_destinations (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+ name TEXT NOT NULL, address TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+ UNIQUE(tenant_id,id), UNIQUE(tenant_id,name)
+);
+CREATE TABLE IF NOT EXISTS shipping_rules (
+ tenant_id INTEGER NOT NULL REFERENCES tenants(id), source TEXT NOT NULL,
+ purpose TEXT NOT NULL CHECK(purpose IN ('stock','order')), method TEXT NOT NULL CHECK(method IN ('fedex','ltl')),
+ label_owner TEXT NOT NULL CHECK(label_owner IN ('planner','packing','either')),
+ PRIMARY KEY(tenant_id,source)
+);
+CREATE TABLE IF NOT EXISTS shipping_plans (
+ tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, destination_id INTEGER NOT NULL,
+ purpose TEXT NOT NULL CHECK(purpose IN ('stock','order')), method TEXT NOT NULL CHECK(method IN ('fedex','ltl')),
+ label_owner TEXT NOT NULL CHECK(label_owner IN ('planner','packing','either')), source TEXT NOT NULL, source_reference TEXT NOT NULL,
+ PRIMARY KEY(tenant_id,ticket_id), FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,destination_id) REFERENCES shipping_destinations(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS shipping_loads (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL REFERENCES tenants(id), destination_id INTEGER NOT NULL,
+ destination_name TEXT NOT NULL, destination_address TEXT NOT NULL,
+ method TEXT NOT NULL CHECK(method IN ('fedex','ltl')), label_owner TEXT NOT NULL CHECK(label_owner IN ('planner','packing','either')),
+ state TEXT NOT NULL DEFAULT 'building' CHECK(state IN ('building','requested','ready','departed')),
+ version INTEGER NOT NULL DEFAULT 0, manifest_version INTEGER NOT NULL DEFAULT 0,
+ carrier TEXT NOT NULL DEFAULT '', reference TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,id), FOREIGN KEY(tenant_id,destination_id) REFERENCES shipping_destinations(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS shipping_boxes (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, pack_record_id INTEGER NOT NULL,
+ kind TEXT NOT NULL DEFAULT 'pack' CHECK(kind='pack'), load_id INTEGER, weight_kg TEXT NOT NULL, dimensions_cm TEXT NOT NULL,
+ voided INTEGER NOT NULL DEFAULT 0 CHECK(voided IN (0,1)), created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES shipping_plans(tenant_id,ticket_id),
+ FOREIGN KEY(tenant_id,ticket_id,pack_record_id,kind) REFERENCES fulfillment_records(tenant_id,ticket_id,id,kind),
+ FOREIGN KEY(tenant_id,load_id) REFERENCES shipping_loads(tenant_id,id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS shipping_active_pack ON shipping_boxes(tenant_id,pack_record_id) WHERE voided=0;
+CREATE INDEX IF NOT EXISTS shipping_box_ticket ON shipping_boxes(tenant_id,ticket_id);
+CREATE INDEX IF NOT EXISTS shipping_box_load ON shipping_boxes(tenant_id,load_id);
+CREATE TABLE IF NOT EXISTS shipping_labels (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, load_id INTEGER NOT NULL, manifest_version INTEGER NOT NULL,
+ filename TEXT NOT NULL, content BLOB, object_key TEXT, object_size INTEGER, sha256 TEXT NOT NULL,
+ actor_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,id), FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id), FOREIGN KEY(tenant_id,load_id) REFERENCES shipping_loads(tenant_id,id),
+ CHECK((content IS NOT NULL AND object_key IS NULL AND object_size IS NULL) OR (content IS NULL AND object_key IS NOT NULL AND object_size>0))
+);
+CREATE INDEX IF NOT EXISTS shipping_label_load ON shipping_labels(tenant_id,load_id,id);
+CREATE TABLE IF NOT EXISTS shipping_departures (
+ tenant_id INTEGER NOT NULL, load_id INTEGER NOT NULL, ticket_id TEXT NOT NULL, record_id INTEGER NOT NULL,
+ kind TEXT NOT NULL DEFAULT 'depart' CHECK(kind='depart'), PRIMARY KEY(tenant_id,record_id),
+ FOREIGN KEY(tenant_id,load_id) REFERENCES shipping_loads(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,record_id,kind) REFERENCES fulfillment_records(tenant_id,ticket_id,id,kind)
+);
+CREATE TABLE IF NOT EXISTS shipping_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL REFERENCES tenants(id), load_id INTEGER,
+ actor_id INTEGER NOT NULL REFERENCES users(id), action TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id),
+ FOREIGN KEY(tenant_id,load_id) REFERENCES shipping_loads(tenant_id,id)
+);
+CREATE INDEX IF NOT EXISTS shipping_events_load ON shipping_events(tenant_id,load_id,id);
+
+CREATE TRIGGER IF NOT EXISTS shipping_labels_no_update BEFORE UPDATE ON shipping_labels BEGIN SELECT RAISE(ABORT,'Shipping evidence is immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS shipping_labels_no_delete BEFORE DELETE ON shipping_labels BEGIN SELECT RAISE(ABORT,'Shipping evidence is immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS shipping_events_no_update BEFORE UPDATE ON shipping_events BEGIN SELECT RAISE(ABORT,'Shipping evidence is immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS shipping_events_no_delete BEFORE DELETE ON shipping_events BEGIN SELECT RAISE(ABORT,'Shipping evidence is immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS shipping_departures_no_update BEFORE UPDATE ON shipping_departures BEGIN SELECT RAISE(ABORT,'Shipping evidence is immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS shipping_departures_no_delete BEFORE DELETE ON shipping_departures BEGIN SELECT RAISE(ABORT,'Shipping evidence is immutable'); END;
+
+CREATE INDEX IF NOT EXISTS shipping_plans_owner_lookup ON shipping_plans(tenant_id,destination_id);
+
+CREATE INDEX IF NOT EXISTS shipping_loads_owner_lookup ON shipping_loads(tenant_id,destination_id);
+
+CREATE INDEX IF NOT EXISTS shipping_labels_owner_lookup ON shipping_labels(tenant_id,actor_id);
+
+CREATE INDEX IF NOT EXISTS shipping_events_owner_lookup ON shipping_events(tenant_id,actor_id);
+
+CREATE INDEX IF NOT EXISTS shipping_departures_owner_lookup ON shipping_departures(tenant_id,load_id);

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% block content %}{% include 'repair_reference.html' %}{% include 'intake_reference.html' %}
 <p><a href="{{ url_for('ticket_detail',ticket_id=ticket.id) }}">← Job {{ ticket.id }}</a> · <a href="{{ url_for('fulfillment_queue') }}">Packing &amp; dispatch queue</a></p>
 <p><a href="{{ url_for('job_plan_detail',ticket_id=ticket.id) }}">Complete Job Plan</a></p><h1>{{ ticket.pn }} · {{ ticket.revision }} — {{ delivery.status }}</h1>
-{% include 'cancellation.html' %}
+{% include 'cancellation.html' %}{% if 'admin' in g.roles or 'planner' in g.roles or 'operator' in g.roles %}<p><a class="button secondary" href="{{ url_for('ticket_shipping',ticket_id=ticket.id) }}">Shipping plan, boxes &amp; labels</a></p>{% endif %}
 <p><a href="{{ url_for('ticket_returns',ticket_id=ticket.id) }}">Customer returns — {{ return_quantity }} received</a>. Returned material is tracked separately on hold; outbound shipment totals remain historical.</p>
 <p>Ordered {{ ticket.quantity }} · Production accepted {{ delivery.accepted }} · Packed total {{ delivery.packed }} · Departed {{ delivery.departed }} · Remaining {{ delivery.remaining }}</p>
 <p>Packed and departed totals exclude reversed entries. {{ delivery.waiting }} packed units are still onsite. Production acceptance and physical departure are separate records.</p>
