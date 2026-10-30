@@ -1,0 +1,6 @@
+{% set drawing = drawing_for(ticket) %}
+<section class="card"><h2>Drawing · {{ ticket.pn }} rev {{ ticket.revision }}</h2>
+{% if drawing %}{% set dxf_part_id = drawing.id %}{% include "dxf_download.html" %}<a class="button secondary" href="{{ url_for('drawing', part_id=drawing.id) }}" target="_blank" rel="noopener">{% if drawing.drawing_url %}View external drawing reference{% else %}Open drawing PDF{% endif %}</a><p>{% if drawing.drawing_url %}External file: verify its revision at the source.{% else %}Fixed uploaded drawing for this ticket’s revision.{% endif %}</p>
+{% else %}<p>No drawing attached. Add this exact PN/revision in <a href="{{ url_for('parts_library') }}">Parts &amp; drawings</a>, then attach its matching drawing.</p>
+{% if 'planner' in g.roles or 'admin' in g.roles %}<form method="post" action="{{ url_for('attach_drawing', ticket_id=ticket.id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ ticket.version }}"><button class="secondary">Attach matching drawing</button></form>{% endif %}
+{% endif %}</section>

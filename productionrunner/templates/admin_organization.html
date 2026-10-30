@@ -1,0 +1,14 @@
+{% extends 'admin_base.html' %}{% block admin_content %}
+<p><a href="{{ url_for('admin_dashboard') }}">← Admin portal</a></p><h1>Organization management</h1><p><a class="button" href="{{ url_for('admin_branding') }}">Branding: logo, display name &amp; colors</a></p>
+{% if saved %}<p class="badge accepted" role="status">Organization details saved.</p>{% endif %}
+<section class="card"><h2>{{ organization.name }}</h2><p><strong>Organization sign-in code:</strong> <code>{{ organization.slug }}</code></p><p>This code stays the same when you rename the organization. Contact details are for your organization’s profile; saving them does not send messages.</p></section>
+<section class="card"><h2>Organization profile</h2><form method="post" class="stack" action="{{ url_for('update_organization') }}">
+<input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ organization.version }}">
+<label>Organization name (up to 160 characters)<input name="name" value="{{ organization.name }}" required maxlength="160" autocomplete="organization"></label>
+<div class="grid"><label>Contact name (optional)<input name="contact_name" value="{{ organization.contact_name }}" maxlength="160" autocomplete="name"></label><label>Contact email (optional)<input name="contact_email" type="email" value="{{ organization.contact_email }}" maxlength="254" autocomplete="email"></label></div>
+<label>Phone (optional)<input name="phone" type="tel" value="{{ organization.phone }}" maxlength="60" autocomplete="tel"></label>
+<label>Address (optional, up to 1,000 characters)<textarea name="address" rows="4" maxlength="1000" autocomplete="street-address">{{ organization.address }}</textarea></label>
+<label>Reason for change (up to 500 characters)<textarea name="reason" required maxlength="500" rows="2"></textarea></label>
+<button>Save organization details</button></form></section>
+<p><a href="{{ url_for('admin_users') }}">Manage organization members</a> · <a href="{{ url_for('security_history') }}">View change history</a></p>
+{% endblock %}

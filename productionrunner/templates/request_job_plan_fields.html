@@ -1,0 +1,24 @@
+{% set initial_plan=request_job_plan(entry.id) if entry else none %}
+<section id="request-job-plan" class="stack">
+<h2>Job Plan — production sequence</h2>
+<p>Build the complete route now, in the order work must happen. Choose the stations configured by your admin. Outside processing follows all internal production steps. Save an unfinished draft if needed; complete all instructions, checks and assignments before approval.</p>
+<input type="hidden" name="request_plan_present" value="yes"><input type="hidden" name="request_plan_json" id="request-plan-json">
+<script type="application/json" id="request-plan-data">{{ initial_plan|tojson }}</script>
+<div id="request-plan-steps" class="stack"></div>
+<button type="button" id="request-plan-add">+ Add production step</button>
+<template id="request-plan-step"><fieldset class="stack"><legend>Production step <span data-number></span></legend>
+<div class="grid"><label>Operation name<input data-field="name" maxlength="120" placeholder="Laser cut, drill holes, deburr, bend…"></label><label>Station<select data-field="station_id"><option value="">Choose station</option>{% for station in planning_stations() %}<option value="{{ station.id }}">{{ station.name }}</option>{% endfor %}</select></label></div>
+<label class="check"><input type="checkbox" data-field="outside"> Outside processing — use the vendor plan below</label>
+<details class="planner-details"><summary>Instructions &amp; quality checks</summary><div class="stack"><label>Work instructions<textarea data-field="instructions" maxlength="350" rows="2" placeholder="Tooling, grain direction, bend sequence and drawing references"></textarea></label>
+<label>Acceptance checks<textarea data-field="criteria" maxlength="2000" rows="2" placeholder="Dimensions, tolerances, finish and how to verify"></textarea></label>
+<label class="check"><input type="checkbox" data-field="first_piece"> Independent first-piece approval before production</label></div></details>
+<div><button type="button" data-action="up">Move up</button> <button type="button" data-action="down">Move down</button> <button type="button" data-action="remove">Remove step</button></div>
+</fieldset></template>
+{% include 'request_outside_fields.html' %}
+<h3>Final stages — after the production route</h3><p>After outside processing, complete inbound inspection, then final independent inspection → packing → shipping / departure. Without outside processing, proceed directly to final inspection. These remain separate controlled stages; shipping records when the product leaves the building.</p>
+{% for stage,label in [('inspection','Independent inspection'),('packing','Packing'),('shipping','Shipping / departure')] %}
+<details class="planner-details" data-stage="{{ stage }}"><summary>{{ label }}</summary><div class="stack"><label>Responsible station<select data-field="station_id"><option value="">Choose station</option>{% for station in planning_stations() %}<option value="{{ station.id }}">{{ station.name }}</option>{% endfor %}</select></label><label>Required checks<textarea data-field="criteria" maxlength="2000" rows="2" placeholder="Specify the checks and evidence required for {{ label|lower }}"></textarea></label></div></details>
+{% endfor %}
+<label class="check"><input type="checkbox" id="request-plan-dxf"> DXF required for this job</label>
+<noscript>JavaScript is required to build and save the Job Plan. Enable it before submitting this request.</noscript>
+</section><script src="{{ url_for('static',filename='request-job-plan.js') }}" defer></script>

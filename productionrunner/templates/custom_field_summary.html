@@ -1,0 +1,1 @@
+{% if custom_values %}<section class="card"><h2>Shop details</h2><dl>{% for f in custom_values %}<dt><strong>{{ f.label }}</strong></dt><dd>{{ f.value or 'Not specified' }}{% if f.retired|default(false) %} <small>(retired field)</small>{% endif %}</dd>{% endfor %}</dl></section>{% endif %}

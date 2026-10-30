@@ -1,0 +1,158 @@
+"""Independent serial execution using the ticket's immutable route definition."""
+import secrets
+from barcode import Code128
+from flask import abort, g, redirect, render_template, request, url_for, Response
+
+
+def units_for(conn, tenant_id, ticket_id):
+    return conn.execute('SELECT s.*, (SELECT COUNT(*) FROM unit_completions c WHERE c.tenant_id=s.tenant_id AND c.unit_id=s.id) AS completed_count FROM serial_units s WHERE s.tenant_id=? AND s.ticket_id=? ORDER BY s.serial',
+                        (tenant_id, ticket_id)).fetchall()
+
+
+def create_units(conn, tenant_id, ticket_id, serials):
+    for serial in serials:
+        conn.execute('INSERT INTO serial_units(id,tenant_id,ticket_id,serial) VALUES(?,?,?,?)',
+                     ('JR-U-' + secrets.token_hex(6).upper(), tenant_id, ticket_id, serial))
+
+
+def update_unit_state(conn, unit, state):
+    conn.execute('UPDATE serial_units SET state=?,version=version+1 WHERE tenant_id=? AND id=?',
+                 (state, unit['tenant_id'], unit['id']))
+    states = {u['state'] for u in units_for(conn, unit['tenant_id'], unit['ticket_id'])}
+    if 'held' in states:
+        summary = 'held'
+    elif states == {'accepted'}:
+        summary = 'accepted'
+    elif states == {'ready'}:
+        summary = 'ready'
+    elif states <= {'awaiting_inspection', 'accepted'}:
+        summary = 'awaiting_inspection'
+    else:
+        summary = 'in_progress'
+    conn.execute('UPDATE tickets SET state=?,version=version+1 WHERE tenant_id=? AND id=?',
+                 (summary, unit['tenant_id'], unit['ticket_id']))
+
+
+
+def register_serials(app, db, roles_required, now):
+    def get_unit(unit_id):
+        unit = db().execute('SELECT * FROM serial_units WHERE tenant_id=? AND id=?', (g.tenant['id'], unit_id)).fetchone()
+        if not unit:
+            abort(404, 'Unknown unit traveler.')
+        return unit
+
+    def route(unit):
+        return db().execute(
+            'SELECT o.*, c.actor_id AS completed_by_unit, c.completed_at AS unit_completed_at, u.username '
+            'FROM operations o LEFT JOIN unit_completions c ON c.operation_id=o.id AND c.unit_id=? '
+            'AND c.tenant_id=o.tenant_id LEFT JOIN users u ON u.id=c.actor_id '
+            'WHERE o.tenant_id=? AND o.ticket_id=? ORDER BY o.sequence',
+            (unit['id'], unit['tenant_id'], unit['ticket_id'])).fetchall()
+
+    def unit_event(unit, action, detail):
+        entry = db().execute('INSERT INTO events(tenant_id,ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?,?)',
+                             (unit['tenant_id'], unit['ticket_id'], g.user['id'], action,
+                              f"{unit['id']} · Serial {unit['serial']}: {detail}", now()))
+        db().execute('INSERT INTO unit_event_links VALUES(?,?,?,?)',
+                     (unit['tenant_id'], unit['ticket_id'], unit['id'], entry.lastrowid))
+
+    def lock_unit(unit_id):
+        db().execute('BEGIN IMMEDIATE')
+        unit = get_unit(unit_id)
+        from .production_controls import require_active
+        require_active(db(), unit['tenant_id'], unit['ticket_id'])
+        if request.form.get('version') != str(unit['version']):
+            abort(409, 'This unit changed. Reload before submitting again.')
+        return unit
+
+    def context(unit):
+        from .work_tracking import contributed
+        ticket = db().execute('SELECT t.*, p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND t.id=?',
+                              (unit['tenant_id'], unit['ticket_id'])).fetchone()
+        operations = route(unit)
+        return dict(unit=unit, ticket=ticket, operations=operations,
+                    next_operation=next((o for o in operations if o['completed_by_unit'] is None), None),
+                    independent=all(o['completed_by_unit'] != g.user['id'] for o in operations) and not contributed(db(),unit['tenant_id'],unit['ticket_id'],unit['id'],g.user['id']))
+
+    @app.get('/units/<unit_id>')
+    @roles_required()
+    def unit_detail(unit_id):
+        unit = get_unit(unit_id)
+        events = db().execute('SELECT e.*,u.username FROM unit_event_links l JOIN events e ON e.id=l.event_id '
+                              'JOIN users u ON u.id=e.actor_id WHERE l.tenant_id=? AND l.unit_id=? ORDER BY e.id',
+                              (unit['tenant_id'], unit_id)).fetchall()
+        return render_template('unit.html', events=events, **context(unit))
+
+    @app.post('/units/<unit_id>/complete')
+    @roles_required('operator')
+    def complete_unit(unit_id):
+        with db():
+            unit = lock_unit(unit_id)
+            if unit['state'] not in {'ready', 'in_progress'}:
+                abort(409, 'This unit is not available for production.')
+            operations = route(unit)
+            remaining = [o for o in operations if o['completed_by_unit'] is None]
+            if not remaining or request.form.get('operation_id') != str(remaining[0]['id']):
+                abort(409, 'Only the next operation for this unit can be completed.')
+            if request.form.get('confirm') != 'yes':
+                abort(400, 'Confirm completion for this individual unit.')
+            operation = remaining[0]
+            from .outside_processing import require_internal
+            require_internal(db(), unit['tenant_id'], operation['id'])
+            from .dispatch import require_dispatch, snapshot
+            require_dispatch(db(), unit['tenant_id'], unit['ticket_id'], operation['id'])
+            from .work_tracking import finish_work
+            ticket=db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',(unit['tenant_id'],unit['ticket_id'])).fetchone()
+            from .job_plan import evidence
+            evidence(db(),unit['tenant_id'],unit['ticket_id'],operation['id'],lambda tid,action,detail:unit_event(unit,action,detail),unit_id)
+            finish_work(db(),unit['tenant_id'],ticket,operation,g.user['id'],now(),lambda tid,action,detail:unit_event(unit,action,detail),unit)
+            db().execute('INSERT INTO unit_completions VALUES(?,?,?,?,?,?)',
+                         (unit['tenant_id'], unit['ticket_id'], unit_id, operation['id'], g.user['id'], now()))
+            update_unit_state(db(), unit, 'in_progress' if len(remaining) > 1 else 'awaiting_inspection')
+            attribution = snapshot(db(), unit['tenant_id'], unit['ticket_id'], operation['id'], g.user['id'], now(), unit_id)
+            unit_event(unit, 'unit_operation_completed', f"{operation['sequence']}: {operation['name']}. {attribution}")
+        if request.form.get('shop_floor') == '1':
+            return redirect(url_for('shop_work', code=unit_id))
+        return redirect(url_for('unit_detail', unit_id=unit_id))
+
+    @app.post('/units/<unit_id>/inspect')
+    @roles_required('inspector')
+    def inspect_unit(unit_id):
+        with db():
+            unit = lock_unit(unit_id)
+            if unit['state'] != 'awaiting_inspection':
+                abort(409, 'Complete this unit’s route before inspection.')
+            from .work_tracking import contributed
+            if contributed(db(),unit['tenant_id'],unit['ticket_id'],unit_id,g.user['id']):
+                abort(403,'A station work contributor cannot inspect this unit.')
+            if any(o['completed_by_unit'] == g.user['id'] for o in route(unit)):
+                abort(403, 'A production contributor cannot inspect this unit.')
+            result, notes = request.form.get('result'), request.form.get('notes', '').strip()
+            if result not in {'pass', 'fail'} or not notes or len(notes) > 4000:
+                abort(400, 'Choose pass or fail and record evidence (up to 4000 characters).')
+            from .job_plan import evidence
+            evidence(db(),unit['tenant_id'],unit['ticket_id'],'inspection',lambda tid,action,detail:unit_event(unit,action,detail),unit_id,passing=result=='pass')
+            db().execute('INSERT INTO unit_inspections VALUES(?,?,?,?,?,?,?)',
+                         (unit['tenant_id'], unit['ticket_id'], unit_id, g.user['id'], result, notes, now()))
+            update_unit_state(db(), unit, 'accepted' if result == 'pass' else 'held')
+            unit_event(unit, 'unit_inspection_' + result, notes)
+        return redirect(url_for('unit_detail', unit_id=unit_id))
+
+    @app.post('/units/<unit_id>/issue-traveler')
+    @roles_required('planner', 'operator')
+    def issue_unit_traveler(unit_id):
+        with db():
+            unit = get_unit(unit_id)
+            unit_event(unit, 'unit_traveler_requested', 'Print/reprint requested; physical printing is not verified.')
+        return redirect(url_for('unit_traveler', unit_id=unit_id))
+
+    @app.get('/units/<unit_id>/traveler')
+    @roles_required()
+    def unit_traveler(unit_id):
+        return render_template('unit_traveler.html', **context(get_unit(unit_id)))
+
+    @app.get('/units/<unit_id>/barcode.svg')
+    @roles_required()
+    def unit_barcode(unit_id):
+        get_unit(unit_id)
+        return Response(Code128(unit_id).render({'module_width': 0.3, 'module_height': 18, 'quiet_zone': 6.5}), mimetype='image/svg+xml')

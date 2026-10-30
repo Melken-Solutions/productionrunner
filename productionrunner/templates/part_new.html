@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Add part &amp; drawing revision</h1><p>This entry is fixed once saved. Use a new revision when the drawing changes.</p>
+<form method="post" enctype="multipart/form-data" class="card stack">
+<input type="hidden" name="csrf" value="{{ session.csrf }}">
+<label>Part number<input name="pn" required maxlength="64"></label><label>Revision<input name="revision" required maxlength="40"></label>
+<label>Description<input name="description" maxlength="500"></label>
+<label>Upload drawing PDF (maximum 10 MB)<input type="file" name="drawing" accept=".pdf,application/pdf"></label>
+<p>Or supply a link instead of an upload:</p><label>HTTPS drawing link<input type="url" name="drawing_url" maxlength="2048" placeholder="https://…"></label>
+<p>Use a revision-specific link. External content can change and may require access to your document system. Network-drive paths are not browser-accessible links; upload the PDF instead.</p>
+<label>Optional laser DXF (maximum 20 MB)<input type="file" name="dxf" accept=".dxf"></label><p>Upload the DXF for this exact PN and revision. Operators can download the original file from their job.</p><button>Save part revision</button></form>{% endblock %}

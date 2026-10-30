@@ -1,0 +1,11 @@
+{% if not cancellation_for(ticket) %}<div class="priority-control">
+{% if ticket.hot_priority %}<strong class="badge hot">HOT {{ ticket.hot_priority }}</strong>{% else %}<span class="muted">Normal</span>{% endif %}
+{% if 'planner' in g.roles or 'admin' in g.roles %}
+<form method="post" action="{{ url_for('set_priority', ticket_id=ticket.id) }}">
+<input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ ticket.version }}">
+<label>HOT priority <small>(1 highest)</small><input aria-label="HOT priority for {{ ticket.id }}" type="number" name="priority" min="1" max="99" value="{{ ticket.hot_priority or 10 }}" required></label>
+<button name="action" value="hot" class="hot-button">{% if ticket.hot_priority %}Update HOT{% else %}Mark HOT{% endif %}</button>
+{% if ticket.hot_priority %}<button name="action" value="normal" class="secondary" formnovalidate>Clear HOT</button>{% endif %}
+</form>{% endif %}
+</div>
+{% else %}<span>Cancelled</span>{% endif %}
