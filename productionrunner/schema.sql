@@ -766,3 +766,12 @@ DROP TRIGGER IF EXISTS part_dxf_no_update;
 CREATE TRIGGER part_dxf_no_update BEFORE UPDATE ON part_dxf WHEN NEW.part_revision_id<>OLD.part_revision_id OR NEW.tenant_id<>OLD.tenant_id OR EXISTS(SELECT 1 FROM part_revisions P WHERE P.tenant_id=OLD.tenant_id AND P.id=OLD.part_revision_id AND (EXISTS(SELECT 1 FROM ticket_drawings WHERE tenant_id=P.tenant_id AND part_revision_id=P.id) OR EXISTS(SELECT 1 FROM tickets WHERE tenant_id=P.tenant_id AND pn=P.pn AND revision=P.revision) OR EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=P.tenant_id AND (part_id=P.id OR (pn=P.pn AND revision=P.revision))) OR EXISTS(SELECT 1 FROM part_plan_templates WHERE tenant_id=P.tenant_id AND part_id=P.id))) BEGIN SELECT RAISE(ABORT,'Used DXF revisions cannot be edited'); END;
 CREATE TRIGGER IF NOT EXISTS part_catalog_changes_no_update BEFORE UPDATE ON part_catalog_changes BEGIN SELECT RAISE(ABORT,'Catalog history is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS part_catalog_changes_no_delete BEFORE DELETE ON part_catalog_changes BEGIN SELECT RAISE(ABORT,'Catalog history is immutable'); END;
+
+CREATE TABLE IF NOT EXISTS operation_templates (
+ tenant_id INTEGER NOT NULL,template_key TEXT NOT NULL,version INTEGER NOT NULL CHECK(version>0),active INTEGER NOT NULL CHECK(active IN (0,1)),data TEXT NOT NULL,actor_id INTEGER NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL,
+ PRIMARY KEY(tenant_id,template_key,version),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS operation_templates_actor ON operation_templates(tenant_id,actor_id);
+CREATE TRIGGER IF NOT EXISTS operation_templates_no_update BEFORE UPDATE ON operation_templates BEGIN SELECT RAISE(ABORT,'Operation template history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS operation_templates_no_delete BEFORE DELETE ON operation_templates BEGIN SELECT RAISE(ABORT,'Operation template history is immutable'); END;

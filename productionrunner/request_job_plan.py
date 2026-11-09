@@ -5,6 +5,15 @@ from flask import abort
 STAGES = ('inspection', 'packing', 'shipping')
 
 
+def provenance(value):
+    if not value.get('operation_template'):return {}
+    key=str(value['operation_template'])
+    version=int(value.get('operation_template_version',0))
+    if len(key)>64 or not 0<=version<=2147483647:raise ValueError
+    return dict(operation_template=key,operation_template_version=version)
+
+
+
 def get(conn, tenant, rid):
     row = conn.execute('SELECT data FROM request_job_plans WHERE tenant_id=? AND request_id=?', (tenant, rid)).fetchone()
     return json.loads(row['data']) if row else None
@@ -25,10 +34,12 @@ def parse(form, previous=None):
             if len(item['name']) > 120 or len(item['instructions']) > 350 or len(item['criteria']) > 2000 or '|' in item['name']:
                 raise ValueError
             item.update(station_id=int(step.get('station_id') or 0), outside=step.get('outside') is True, first_piece=step.get('first_piece') is True)
+            item.update(provenance(step))
             cleaned['steps'].append(item)
         for stage in STAGES:
             value = plan.get(stage, {})
             cleaned[stage] = dict(station_id=int(value.get('station_id') or 0), criteria=str(value.get('criteria', '')).strip())
+            cleaned[stage].update(provenance(value))
             if len(cleaned[stage]['criteria']) > 2000:
                 raise ValueError
         return cleaned
@@ -42,6 +53,12 @@ def save(conn, tenant, rid, plan):
         check_source(conn,tenant,rid,plan,get(conn,tenant,rid))
         # Even incomplete drafts must not refer to another organization's stations.
         for step in plan['steps'] + [plan[k] for k in STAGES]:
+            key=step.get('operation_template')
+            if key:
+                version=step['operation_template_version']
+                from .operation_templates import STARTERS
+                valid=any(t[0]==key for t in STARTERS) if version==0 else conn.execute('SELECT 1 FROM operation_templates WHERE tenant_id=? AND template_key=? AND version=?',(tenant,key,version)).fetchone()
+                if not valid:abort(400,'Choose an operation template from your organization.')
             sid = step['station_id']
             if sid and not conn.execute('SELECT 1 FROM stations WHERE tenant_id=? AND id=? AND active=1', (tenant, sid)).fetchone():
                 abort(400, 'Choose an active station from your organization.')
@@ -94,7 +111,7 @@ def apply(conn, tenant, rid, tid, user, stamp, event):
     data = dict(operations={}, dxf_required=plan['dxf_required'])
     if plan.get('template_id'):data['template_id']=plan['template_id']
     for op, step in zip(ops, plan['steps'], strict=True):
-        data['operations'][str(op['id'])] = dict(criteria=step['criteria'], first_piece=step['first_piece'])
+        data['operations'][str(op['id'])] = dict(criteria=step['criteria'], first_piece=step['first_piece'], **provenance(step))
         if not step['outside']:
             conn.execute('INSERT INTO operation_assignments VALUES(?,?,?,?,NULL) ON CONFLICT(operation_id) DO UPDATE SET station_id=excluded.station_id', (tenant, tid, op['id'], step['station_id']))
     for stage in STAGES:

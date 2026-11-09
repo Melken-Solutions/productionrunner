@@ -204,6 +204,8 @@ def create_app(config=None):
     register_shipping(app, db, roles_required, now, event)
     from .serials import create_units, units_for, register_serials
     register_serials(app, db, roles_required, now)
+    from . import operation_templates
+    operation_templates.register(app, db, roles_required, now)
     from . import catalog
     catalog.register(app, db, roles_required, now)
     from .parts import register_parts, find_part, matching_part, FIELDS
