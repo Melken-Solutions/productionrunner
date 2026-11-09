@@ -56,12 +56,15 @@ def register_shipping(app, db, roles_required, now, event):
     @roles_required('admin')
     def shipping_settings():
         why=text('reason')
+        return_ticket=request.form.get('return_ticket','')
+        created_destination=None
         with db():
             lock(('admin',))
+            if return_ticket and not db().execute('SELECT 1 FROM tickets WHERE tenant_id=? AND id=?',(g.tenant['id'],return_ticket)).fetchone():abort(404)
             if request.form.get('action')=='destination':
                 name,address=text('name',120),text('address',1000)
                 if db().execute('SELECT 1 FROM shipping_destinations WHERE tenant_id=? AND name=?',(g.tenant['id'],name)).fetchone():abort(409,'Destination name already exists.')
-                db().execute('INSERT INTO shipping_destinations(tenant_id,name,address) VALUES(?,?,?)',(g.tenant['id'],name,address))
+                created_destination=db().execute('INSERT INTO shipping_destinations(tenant_id,name,address) VALUES(?,?,?)',(g.tenant['id'],name,address)).lastrowid
                 log('destination_created',dict(name=name,address=address,reason=why))
             elif request.form.get('action')=='rule':
                 source,purpose,method,owner=[request.form.get(k) for k in ('source','purpose','method','label_owner')]
@@ -70,6 +73,8 @@ def register_shipping(app, db, roles_required, now, event):
                 db().execute('INSERT INTO shipping_rules VALUES(?,?,?,?,?) ON CONFLICT(tenant_id,source) DO UPDATE SET purpose=excluded.purpose,method=excluded.method,label_owner=excluded.label_owner',(g.tenant['id'],source,purpose,method,owner))
                 log('rule_saved',dict(source=source,purpose=purpose,method=method,label_owner=owner,previous=dict(old) if old else None,reason=why))
             else:abort(400)
+        if return_ticket and created_destination:
+            return redirect(url_for('ticket_shipping',ticket_id=return_ticket,destination_id=created_destination))
         return redirect(url_for('shipping_admin'))
 
     @app.route('/tickets/<ticket_id>/shipping',methods=['GET','POST'])

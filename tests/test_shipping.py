@@ -226,3 +226,23 @@ def test_concurrent_dispatch_records_one_departure(app):
     with ThreadPoolExecutor(max_workers=2) as pool:statuses=list(pool.map(submit,clients))
     assert sorted(statuses)==[302,409]
     assert rows(app,"SELECT COUNT(*) FROM fulfillment_records WHERE kind='depart'")[0][0]==1
+
+
+def test_empty_destinations_and_inline_admin_setup(app):
+    c,tid=accepted(app)
+    sign_in(c,'planner')
+    page=c.get(f'/tickets/{tid}/shipping')
+    assert b'No approved shipping destinations' in page.data
+    assert b'Ask your organization admin' in page.data
+    assert post(c,'/admin/shipping',action='destination',return_ticket=tid,name='Warehouse',address='123 Test Road',reason='Approved').status_code==403
+    sign_in(c,'admin')
+    assert b'Add an approved destination' in c.get(f'/tickets/{tid}/shipping').data
+    assert post(c,'/admin/shipping',action='destination',return_ticket='OTHER',name='Warehouse',address='123 Test Road',reason='Approved').status_code==404
+    assert not rows(app,'SELECT * FROM shipping_destinations')
+    result=post(c,'/admin/shipping',action='destination',return_ticket=tid,name='Warehouse',address='123 Test Road',reason='Approved')
+    assert result.status_code==302 and f'/tickets/{tid}/shipping?destination_id=' in result.location
+    page=c.get(result.location)
+    assert b'No approved shipping destinations' not in page.data
+    assert b'selected>Warehouse' in page.data
+    sign_in(c,'planner')
+    assert b'Warehouse' in c.get(f'/tickets/{tid}/shipping').data
