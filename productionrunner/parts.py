@@ -71,6 +71,8 @@ def register_parts(app, db, roles_required, now, lock_ticket, event):
     @roles_required('planner', 'admin')
     def upload_dxf(part_id):
         find_part(db(), g.tenant['id'], part_id)
+        from .catalog import active
+        active(db(),g.tenant['id'],part_id)
         data = read_dxf(required=True)
         if db().execute('SELECT 1 FROM part_dxf WHERE tenant_id=? AND part_revision_id=?',(g.tenant['id'],part_id)).fetchone():
             abort(409, 'This revision already has a DXF.')
@@ -103,8 +105,9 @@ def register_parts(app, db, roles_required, now, lock_ticket, event):
     @app.get('/parts')
     @roles_required()
     def parts_library():
+        show_removed = request.args.get('view')=='removed'
         query = '%' + request.args.get('q', '').strip()[:100] + '%'
-        parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? AND (pn LIKE ? OR description LIKE ?) ORDER BY pn,revision', (g.tenant['id'], query, query)).fetchall()
+        parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? AND (pn LIKE ? OR description LIKE ?) AND id '+('IN' if show_removed else 'NOT IN')+' (SELECT part_id FROM part_catalog_controls WHERE archived=1) ORDER BY pn,revision', (g.tenant['id'], query, query)).fetchall()
         return render_template('parts.html', parts=parts)
 
     @app.route('/parts/new', methods=['GET', 'POST'])
@@ -187,6 +190,9 @@ def register_parts(app, db, roles_required, now, lock_ticket, event):
             if ticket_drawing(db(), g.tenant['id'], ticket_id):
                 abort(409, 'This ticket already has a fixed drawing reference.')
             part = matching_part(db(), g.tenant['id'], ticket['pn'], ticket['revision'])
+            if part:
+                from .catalog import active
+                active(db(),g.tenant['id'],part['id'])
             if not part:
                 abort(404, 'Add the exact PN/revision to Parts & drawings first.')
             db().execute('INSERT INTO ticket_drawings VALUES(?,?,?)', (g.tenant['id'], ticket_id, part['id']))

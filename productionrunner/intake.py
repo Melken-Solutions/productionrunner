@@ -105,7 +105,7 @@ def register_intake(app, db, roles_required, now):
         return value
 
     def choices():
-        return db().execute('SELECT id,pn,revision,description FROM part_revisions WHERE tenant_id=? ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
+        return db().execute('SELECT id,pn,revision,description FROM part_revisions WHERE tenant_id=? AND id NOT IN (SELECT part_id FROM part_catalog_controls WHERE archived=1) ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
 
     @app.get('/requests')
     @roles_required()
@@ -128,6 +128,10 @@ def register_intake(app, db, roles_required, now):
         with db():
             db().execute('BEGIN IMMEDIATE')
             actor(db(), g.tenant['id'], g.user['id'])
+            from .parts import matching_part
+            from .catalog import active
+            existing=matching_part(db(),g.tenant['id'],data['pn'],data['revision'])
+            if existing: active(db(),g.tenant['id'],existing['id'])
             db().execute('INSERT INTO intake_requests(id,tenant_id,' + ','.join(EDIT_FIELDS) + ',created_by,created_at) VALUES(' + ','.join('?' for _ in range(len(EDIT_FIELDS)+4)) + ')', (rid, g.tenant['id'], *(data[k] for k in EDIT_FIELDS), g.user['id'], now()))
             from .materials import select_material,save_request
             material=select_material(db(),g.tenant['id'],request.form)
@@ -166,6 +170,11 @@ def register_intake(app, db, roles_required, now):
             row = get_request(db(), g.tenant['id'], rid)
             if row['status'] in {'ticketed', 'cancelled'} or str(row['version']) != request.form.get('version'):
                 abort(409, 'Request changed or cannot be edited. Reload it.')
+            if (data['pn'],data['revision']) != (row['pn'],row['revision']):
+                from .parts import matching_part
+                from .catalog import active
+                existing=matching_part(db(),g.tenant['id'],data['pn'],data['revision'])
+                if existing: active(db(),g.tenant['id'],existing['id'])
             before = {key: row[key] for key in EDIT_FIELDS}
             from .materials import select_material,save_request,request_material
             material=select_material(db(),g.tenant['id'],request.form)

@@ -83,6 +83,8 @@ def review(conn, tenant, batch):
         if not item['errors']:
             if existing:
                 item['part_id'] = existing['id']
+                from .catalog import controls
+                if controls(conn,tenant,existing['id'])['archived']:item['errors'].append('Revision removed from catalog; restore it before importing files.')
                 if row['description'] and row['description'] != existing['description']:
                     item['errors'].append('Existing description differs; descriptions are immutable.')
                 if row['drawing_file'] and (existing['drawing_url'] or existing['sha256'] != batch['files'][row['drawing_file']]['sha']):

@@ -204,6 +204,8 @@ def create_app(config=None):
     register_shipping(app, db, roles_required, now, event)
     from .serials import create_units, units_for, register_serials
     register_serials(app, db, roles_required, now)
+    from . import catalog
+    catalog.register(app, db, roles_required, now)
     from .parts import register_parts, find_part, matching_part, FIELDS
     register_parts(app, db, roles_required, now, lock_ticket, event)
     from .part_import import register_import
@@ -289,7 +291,7 @@ def create_app(config=None):
             abort(409, 'Start with an approved production request before creating a JobRunner ticket.')
         intake_entry = approved_request(db(), g.tenant['id'], request_id)
         if request.method == 'GET':
-            parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
+            parts = db().execute(f'SELECT {FIELDS} FROM part_revisions WHERE tenant_id=? AND id NOT IN (SELECT part_id FROM part_catalog_controls WHERE archived=1) ORDER BY pn,revision', (g.tenant['id'],)).fetchall()
             return render_template('new.html', parts=parts, intake_entry=intake_entry, workflow=workflow_settings(db(), g.tenant['id']))
         pn = request.form.get('pn', '').strip()
         revision = request.form.get('revision', '').strip()

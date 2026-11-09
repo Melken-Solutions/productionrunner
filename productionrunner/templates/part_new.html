@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block content %}
-<h1>Add part &amp; drawing revision</h1><p>This entry is fixed once saved. Use a new revision when the drawing changes.</p>
+<h1>Add part &amp; drawing revision</h1><p>Unused entries can be corrected through Manage. Once referenced by a request, job or Job Plan, use a new revision for changes.</p>
 <form method="post" enctype="multipart/form-data" class="card stack">
 <input type="hidden" name="csrf" value="{{ session.csrf }}">
 <label>Part number<input name="pn" value="{{ request.args.get('pn','') }}" required maxlength="64"></label><label>Revision<input name="revision" value="{{ request.args.get('revision','') }}" required maxlength="40"></label>

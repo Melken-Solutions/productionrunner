@@ -747,3 +747,22 @@ CREATE TRIGGER IF NOT EXISTS lot_job_no_update BEFORE UPDATE ON lot_jobs BEGIN S
 CREATE TRIGGER IF NOT EXISTS lot_job_no_delete BEFORE DELETE ON lot_jobs BEGIN SELECT RAISE(ABORT,'Lot job identity is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS lot_no_delete BEFORE DELETE ON production_lots BEGIN SELECT RAISE(ABORT,'Lot history cannot be deleted'); END;
 CREATE TRIGGER IF NOT EXISTS lot_identity BEFORE UPDATE ON production_lots WHEN NEW.tenant_id!=OLD.tenant_id OR NEW.ticket_id!=OLD.ticket_id OR NEW.unit_id!=OLD.unit_id OR NEW.parent_id IS NOT OLD.parent_id OR NEW.quantity>OLD.quantity OR (OLD.scrapped=1 AND (NEW.scrapped!=1 OR NEW.quantity!=OLD.quantity)) BEGIN SELECT RAISE(ABORT,'Lot identity and scrapped quantities are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS part_catalog_controls (
+ tenant_id INTEGER NOT NULL,part_id TEXT PRIMARY KEY,archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),version INTEGER NOT NULL DEFAULT 0,
+ FOREIGN KEY(tenant_id,part_id) REFERENCES part_revisions(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS part_catalog_changes (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,part_id TEXT NOT NULL,actor_id INTEGER NOT NULL,action TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,part_id) REFERENCES part_revisions(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS part_catalog_change_part ON part_catalog_changes(tenant_id,part_id,id);
+CREATE INDEX IF NOT EXISTS part_catalog_change_actor ON part_catalog_changes(tenant_id,actor_id);
+
+DROP TRIGGER IF EXISTS part_revision_no_update;
+CREATE TRIGGER part_revision_no_update BEFORE UPDATE ON part_revisions WHEN NEW.id<>OLD.id OR NEW.tenant_id<>OLD.tenant_id OR (EXISTS(SELECT 1 FROM ticket_drawings WHERE tenant_id=OLD.tenant_id AND part_revision_id=OLD.id) OR EXISTS(SELECT 1 FROM tickets WHERE tenant_id=OLD.tenant_id AND pn=OLD.pn AND revision=OLD.revision) OR EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=OLD.tenant_id AND (part_id=OLD.id OR (pn=OLD.pn AND revision=OLD.revision))) OR EXISTS(SELECT 1 FROM part_plan_templates WHERE tenant_id=OLD.tenant_id AND part_id=OLD.id)) OR (EXISTS(SELECT 1 FROM ticket_drawings WHERE tenant_id=NEW.tenant_id AND part_revision_id=NEW.id) OR EXISTS(SELECT 1 FROM tickets WHERE tenant_id=NEW.tenant_id AND pn=NEW.pn AND revision=NEW.revision) OR EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=NEW.tenant_id AND (part_id=NEW.id OR (pn=NEW.pn AND revision=NEW.revision))) OR EXISTS(SELECT 1 FROM part_plan_templates WHERE tenant_id=NEW.tenant_id AND part_id=NEW.id)) BEGIN SELECT RAISE(ABORT,'Used part revisions cannot be edited'); END;
+DROP TRIGGER IF EXISTS part_dxf_no_update;
+CREATE TRIGGER part_dxf_no_update BEFORE UPDATE ON part_dxf WHEN NEW.part_revision_id<>OLD.part_revision_id OR NEW.tenant_id<>OLD.tenant_id OR EXISTS(SELECT 1 FROM part_revisions P WHERE P.tenant_id=OLD.tenant_id AND P.id=OLD.part_revision_id AND (EXISTS(SELECT 1 FROM ticket_drawings WHERE tenant_id=P.tenant_id AND part_revision_id=P.id) OR EXISTS(SELECT 1 FROM tickets WHERE tenant_id=P.tenant_id AND pn=P.pn AND revision=P.revision) OR EXISTS(SELECT 1 FROM intake_requests WHERE tenant_id=P.tenant_id AND (part_id=P.id OR (pn=P.pn AND revision=P.revision))) OR EXISTS(SELECT 1 FROM part_plan_templates WHERE tenant_id=P.tenant_id AND part_id=P.id))) BEGIN SELECT RAISE(ABORT,'Used DXF revisions cannot be edited'); END;
+CREATE TRIGGER IF NOT EXISTS part_catalog_changes_no_update BEFORE UPDATE ON part_catalog_changes BEGIN SELECT RAISE(ABORT,'Catalog history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS part_catalog_changes_no_delete BEFORE DELETE ON part_catalog_changes BEGIN SELECT RAISE(ABORT,'Catalog history is immutable'); END;

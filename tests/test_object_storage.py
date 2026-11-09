@@ -32,6 +32,9 @@ def test_remote_pdf_dxf_roundtrip_inventory_and_immutability(app,store):
     assert p['object_size']==len(PDF) and d['object_size']==len(DXF)
     assert c.get(r.location+'/drawing').data==PDF
     assert post(c,r.location+'/dxf/download').data==DXF
+    # Used revisions stay immutable; unused revisions now support controlled corrections.
+    from test_intake import receive
+    assert receive(c).status_code==302
     sign_in(c,'admin')
     page=c.get('/admin/storage')
     assert page.status_code==200
@@ -156,3 +159,14 @@ def test_live_staging_storage_routes(app):
         if keys:
             req=Request(cfg['PR_SUPABASE_URL']+'/storage/v1/object/'+cfg['PR_STORAGE_BUCKET'],data=json.dumps({'prefixes':keys}).encode(),method='DELETE',headers={'apikey':cfg['PR_SUPABASE_SECRET_KEY'],'Content-Type':'application/json'})
             with urlopen(req,timeout=30) as response:assert response.status==200
+
+
+def test_unused_cloud_file_replacement_uses_new_object(app,store):
+    c=planner(app);r=add_part(c);pid=r.location.split('/')[-1]
+    old=rows(app,'SELECT object_key FROM part_revisions')[0][0]
+    replacement=PDF+b' replacement'
+    result=post(c,f'/parts/{pid}/manage',action='edit',version='0',pn='PN-001',revision='A',description='Corrected',reason='Wrong unused upload',drawing=(BytesIO(replacement),'correct.pdf'))
+    assert result.status_code==302
+    new=rows(app,'SELECT object_key FROM part_revisions')[0][0]
+    assert new!=old and store.objects[old]==PDF
+    assert c.get(r.location+'/drawing').data==replacement

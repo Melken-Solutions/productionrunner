@@ -22,6 +22,9 @@ def save(conn, tenant, user, item, stamp):
     if not files:
         return None
     part = matching_part(conn, tenant, item['pn'], item['revision'])
+    if part:
+        from .catalog import active
+        active(conn,tenant,part['id'])
     if part and 'drawing' in files:
         abort(409, 'This PN/revision already has a drawing. Choose a new revision to upload a changed drawing.')
     if not part and 'drawing' not in files:
