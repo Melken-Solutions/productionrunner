@@ -5,3 +5,5 @@
 
 /* Only the selected credential field should appear on sign-in. */
 #sign-in-form [hidden] { display: none !important; }
+
+.priority-control details{margin-top:8px}.priority-control summary{cursor:pointer;color:var(--primary,#007b80);padding:8px 0;font-size:.9rem}.priority-control summary:focus-visible{outline:3px solid #dd9b17;outline-offset:3px}
