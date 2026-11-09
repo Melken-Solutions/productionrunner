@@ -8,7 +8,7 @@ from .admin import epoch
 from .request_outside import get_plan, parse as outside_fields, save as save_outside
 
 from . import request_job_plan as request_plan
-from . import custom_fields
+from . import custom_fields, request_documents
 
 SOURCES = ('manual', 'po', 'erp', 'email', 'smartsheet', 'other')
 EDIT_FIELDS = ('item_type', 'source', 'source_reference', 'requester', 'destination', 'required_date', 'pn', 'revision', 'quantity', 'description')
@@ -137,6 +137,8 @@ def register_intake(app, db, roles_required, now):
             custom_fields.save(db(),g.tenant['id'],rid,custom)
             plan = request_plan.parse(request.form)
             request_plan.save(db(),g.tenant['id'],rid,plan)
+            uploaded = request_documents.save(db(),g.tenant['id'],g.user['id'],data,now())
+            if uploaded: log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',uploaded,now())
             log(db(), g.tenant['id'], g.user['id'], rid, 'request_received', dict(data, outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), now())
         return redirect(url_for('intake_detail', rid=rid))
 
@@ -174,7 +176,9 @@ def register_intake(app, db, roles_required, now):
             plan=request_plan.parse(request.form,previous_plan)
             previous_custom=custom_fields.saved(db(),g.tenant['id'],rid)
             custom=custom_fields.collect(db(),g.tenant['id'],request.form,previous_custom)
-            if previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
+            uploaded = request_documents.save(db(),g.tenant['id'],g.user['id'],data,now())
+            if uploaded: log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',uploaded,now())
+            if uploaded or previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
                 db().execute('UPDATE intake_requests SET ' + ','.join(key+'=?' for key in EDIT_FIELDS) + ",status='preparing',part_id=NULL,approved_by=NULL,approved_at=NULL,version=version+1 WHERE tenant_id=? AND id=?", (*(data[k] for k in EDIT_FIELDS), g.tenant['id'], rid))
                 save_request(db(),g.tenant['id'],rid,material)
                 save_outside(db(),g.tenant['id'],rid,outside)
@@ -182,6 +186,21 @@ def register_intake(app, db, roles_required, now):
                 custom_fields.save(db(),g.tenant['id'],rid,custom)
                 log(db(), g.tenant['id'], g.user['id'], rid, 'request_edited', dict(before=dict(before,outside_processing=previous_outside,material=previous_material,job_plan=previous_plan,custom_fields=previous_custom), after=dict(data,outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), reason=why, approval_invalidated=row['status']=='approved'), now())
         return redirect(url_for('intake_detail', rid=rid))
+
+    @app.post('/requests/<rid>/documents')
+    @roles_required('planner', 'admin')
+    def intake_documents(rid):
+        with db():
+            db().execute('BEGIN IMMEDIATE')
+            actor(db(),g.tenant['id'],g.user['id'])
+            row=get_request(db(),g.tenant['id'],rid)
+            if row['status'] not in {'preparing','approved'} or str(row['version']) != request.form.get('version'):
+                abort(409,'Request changed or is already in production. Reload it.')
+            uploaded=request_documents.save(db(),g.tenant['id'],g.user['id'],row,now())
+            if not uploaded: abort(400,'Choose a drawing PDF or DXF to upload.')
+            db().execute("UPDATE intake_requests SET status='preparing',part_id=NULL,approved_by=NULL,approved_at=NULL,version=version+1 WHERE tenant_id=? AND id=?",(g.tenant['id'],rid))
+            log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',dict(uploaded,approval_invalidated=row['status']=='approved'),now())
+        return redirect(url_for('intake_detail',rid=rid))
 
     @app.post('/requests/<rid>/decision')
     @roles_required('planner', 'admin')
