@@ -18,6 +18,8 @@ def parse(form, previous=None):
         if not isinstance(plan, dict) or not isinstance(plan.get('steps'), list) or len(plan['steps']) > 20:
             raise ValueError
         cleaned = {'steps': [], 'dxf_required': plan.get('dxf_required') is True}
+        if plan.get('template_id'):
+            cleaned['template_id']=int(plan['template_id'])
         for step in plan['steps']:
             item = {k: str(step.get(k, '')).strip() for k in ('name', 'instructions', 'criteria')}
             if len(item['name']) > 120 or len(item['instructions']) > 350 or len(item['criteria']) > 2000 or '|' in item['name']:
@@ -36,6 +38,8 @@ def parse(form, previous=None):
 
 def save(conn, tenant, rid, plan):
     if plan is not None:
+        from .plan_templates import check_source
+        check_source(conn,tenant,rid,plan,get(conn,tenant,rid))
         # Even incomplete drafts must not refer to another organization's stations.
         for step in plan['steps'] + [plan[k] for k in STAGES]:
             sid = step['station_id']
@@ -88,6 +92,7 @@ def apply(conn, tenant, rid, tid, user, stamp, event):
         return
     ops = conn.execute('SELECT id FROM operations WHERE tenant_id=? AND ticket_id=? ORDER BY sequence', (tenant, tid)).fetchall()
     data = dict(operations={}, dxf_required=plan['dxf_required'])
+    if plan.get('template_id'):data['template_id']=plan['template_id']
     for op, step in zip(ops, plan['steps'], strict=True):
         data['operations'][str(op['id'])] = dict(criteria=step['criteria'], first_piece=step['first_piece'])
         if not step['outside']:

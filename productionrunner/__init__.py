@@ -162,6 +162,8 @@ def create_app(config=None):
     register_shop_setup(app,db,roles_required)
     from .intake import register_intake, approved_request, link_ticket, actor as intake_actor
     register_intake(app, db, roles_required, now)
+    from .plan_templates import register as register_plan_templates
+    register_plan_templates(app, db, roles_required, now)
     from .fulfillment import register_fulfillment
     register_fulfillment(app, db, roles_required, now, lock_ticket, event)
     from .returns import register_returns

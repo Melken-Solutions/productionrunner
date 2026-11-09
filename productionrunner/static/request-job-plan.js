@@ -3,6 +3,7 @@
   if (!root) return;
   const list = document.getElementById('request-plan-steps');
   const addButton = document.getElementById('request-plan-add');
+  let templateId = null;
   const saved = JSON.parse(document.getElementById('request-plan-data').textContent);
   const read = node => Object.fromEntries([...node.querySelectorAll('[data-field]')].map(el => [el.dataset.field, el.type === 'checkbox' ? el.checked : el.value]));
   const fill = (node, data) => node.querySelectorAll('[data-field]').forEach(el => {
@@ -20,6 +21,7 @@
     });
     addButton.disabled = steps.length >= 20;
     const plan = {steps: steps.map(read), dxf_required: document.getElementById('request-plan-dxf').checked};
+    if (templateId) plan.template_id = templateId;
     root.querySelectorAll('[data-stage]').forEach(row => { plan[row.dataset.stage] = read(row); });
     document.getElementById('request-plan-json').value = JSON.stringify(plan);
     root.dispatchEvent(new CustomEvent('planchange', {bubbles:true}));
@@ -48,6 +50,16 @@
     });
     list.append(row); sync();
   }
+  root.addEventListener('loadtemplate', event => {
+    const plan = event.detail || {};
+    templateId = plan.template_id || null;
+    list.replaceChildren();
+    root.querySelectorAll('[data-stage]').forEach(row => fill(row, plan[row.dataset.stage] || {}));
+    document.getElementById('request-plan-dxf').checked = plan.dxf_required === true;
+    (plan.steps || [{}]).forEach(add);
+    sync();
+  });
+  templateId = saved?.template_id || null;
   root.querySelectorAll('[data-stage]').forEach(row => fill(row, saved?.[row.dataset.stage] || {}));
   document.getElementById('request-plan-dxf').checked = saved?.dxf_required === true;
   (saved?.steps || [{}]).forEach(add);

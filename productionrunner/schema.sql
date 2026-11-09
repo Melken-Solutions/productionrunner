@@ -700,3 +700,18 @@ CREATE INDEX IF NOT EXISTS shipping_labels_owner_lookup ON shipping_labels(tenan
 CREATE INDEX IF NOT EXISTS shipping_events_owner_lookup ON shipping_events(tenant_id,actor_id);
 
 CREATE INDEX IF NOT EXISTS shipping_departures_owner_lookup ON shipping_departures(tenant_id,load_id);
+
+CREATE TABLE IF NOT EXISTS part_plan_templates (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, part_id TEXT NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision>0), status TEXT NOT NULL CHECK(status IN ('approved','withdrawn')),
+ data TEXT NOT NULL, source_request_id TEXT NOT NULL, actor_id INTEGER NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL,
+ UNIQUE(tenant_id,id), UNIQUE(tenant_id,part_id,revision),
+ FOREIGN KEY(tenant_id,part_id) REFERENCES part_revisions(tenant_id,id),
+ FOREIGN KEY(tenant_id,source_request_id) REFERENCES intake_requests(tenant_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS part_plan_templates_source ON part_plan_templates(tenant_id,source_request_id);
+CREATE INDEX IF NOT EXISTS part_plan_templates_actor ON part_plan_templates(tenant_id,actor_id);
+
+CREATE TRIGGER IF NOT EXISTS part_plan_templates_no_update BEFORE UPDATE ON part_plan_templates BEGIN SELECT RAISE(ABORT,'Plan templates are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS part_plan_templates_no_delete BEFORE DELETE ON part_plan_templates BEGIN SELECT RAISE(ABORT,'Plan templates are immutable'); END;

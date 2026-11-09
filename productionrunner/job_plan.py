@@ -93,6 +93,7 @@ def register_job_plan(app,db,roles_required,now,lock_ticket,event):
                 reason=request.form.get('reason','').strip()
                 if not 1<=len(reason)<=500:abort(400,'Record the reason for this plan revision.')
                 before=current(db(),g.tenant['id'],ticket_id)
+                if before and before['data'].get('template_id'):data['template_id']=before['data']['template_id']
                 db().execute('INSERT INTO job_plans(tenant_id,ticket_id,data,actor_id,reason,created_at) VALUES(?,?,?,?,?,?)',(g.tenant['id'],ticket_id,json.dumps(data),g.user['id'],reason,now()))
                 db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?',(g.tenant['id'],ticket_id))
                 event(ticket_id,'job_plan_saved',json.dumps(dict(previous_plan=before['id'] if before else None,plan=data,reason=reason)))
