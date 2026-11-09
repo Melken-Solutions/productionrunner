@@ -108,10 +108,11 @@ def register_job_plan(app,db,roles_required,now,lock_ticket,event):
         with db():
             t=lock_ticket(ticket_id);actor(db(),g.tenant['id'],g.user['id'],('inspector',))
             p=current(db(),g.tenant['id'],ticket_id)
-            if not released(db(),g.tenant['id'],ticket_id) or t['state'] not in {'ready','in_progress'} or not p or not p['data']['operations'].get(str(operation_id),{}).get('first_piece'):abort(409,'No first-piece review is available for this operation.')
+            from .lots import enabled
+            if not released(db(),g.tenant['id'],ticket_id) or (t['state'] not in {'ready','in_progress'} and not (t['state']=='held' and enabled(db(),g.tenant['id'],ticket_id))) or not p or not p['data']['operations'].get(str(operation_id),{}).get('first_piece'):abort(409,'No first-piece review is available for this operation.')
             op=db().execute('SELECT * FROM operations WHERE tenant_id=? AND ticket_id=? AND id=?',(g.tenant['id'],ticket_id,operation_id)).fetchone()
-            unit_count=db().execute('SELECT COUNT(*) FROM serial_units WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id)).fetchone()[0]
-            done_count=db().execute('SELECT COUNT(*) FROM unit_completions WHERE tenant_id=? AND operation_id=?',(g.tenant['id'],operation_id)).fetchone()[0]
+            unit_count=db().execute('SELECT COUNT(*) FROM serial_units s WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM production_lots l WHERE l.tenant_id=s.tenant_id AND l.unit_id=s.id AND l.scrapped=1)',(g.tenant['id'],ticket_id)).fetchone()[0]
+            done_count=db().execute('SELECT COUNT(*) FROM unit_completions c WHERE tenant_id=? AND operation_id=? AND NOT EXISTS(SELECT 1 FROM production_lots l WHERE l.tenant_id=c.tenant_id AND l.unit_id=c.unit_id AND l.scrapped=1)',(g.tenant['id'],operation_id)).fetchone()[0]
             if not op or op['completed_by'] or (unit_count and done_count==unit_count):abort(409,'Production already completed for this operation. Use the hold/rework process.')
             if db().execute('SELECT 1 FROM work_sessions s JOIN work_events e ON e.session_id=s.id AND e.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.ticket_id=? AND s.operation_id=? AND e.actor_id=?',(g.tenant['id'],ticket_id,operation_id,g.user['id'])).fetchone():abort(403,'A setup/work contributor cannot approve their own first piece.')
             a=assignment(db(),g.tenant['id'],operation_id)

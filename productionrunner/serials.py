@@ -18,7 +18,8 @@ def create_units(conn, tenant_id, ticket_id, serials):
 def update_unit_state(conn, unit, state):
     conn.execute('UPDATE serial_units SET state=?,version=version+1 WHERE tenant_id=? AND id=?',
                  (state, unit['tenant_id'], unit['id']))
-    states = {u['state'] for u in units_for(conn, unit['tenant_id'], unit['ticket_id'])}
+    from .lots import info
+    states = {u['state'] for u in units_for(conn, unit['tenant_id'], unit['ticket_id']) if not ((lot:=info(conn,unit['tenant_id'],u['id'])) and lot['scrapped'])}
     if 'held' in states:
         summary = 'held'
     elif states == {'accepted'}:
@@ -59,6 +60,8 @@ def register_serials(app, db, roles_required, now):
     def lock_unit(unit_id):
         db().execute('BEGIN IMMEDIATE')
         unit = get_unit(unit_id)
+        from .lots import active
+        active(db(),g.tenant['id'],unit_id)
         from .production_controls import require_active
         require_active(db(), unit['tenant_id'], unit['ticket_id'])
         if request.form.get('version') != str(unit['version']):
@@ -90,6 +93,9 @@ def register_serials(app, db, roles_required, now):
             unit = lock_unit(unit_id)
             if unit['state'] not in {'ready', 'in_progress'}:
                 abort(409, 'This unit is not available for production.')
+            from .lots import info,quantity
+            if info(db(),g.tenant['id'],unit_id) and request.form.get('completed_quantity')!=str(quantity(db(),g.tenant['id'],unit_id)):
+                abort(400,'Confirm the actual lot quantity. Split a partial run before recording completion.')
             operations = route(unit)
             remaining = [o for o in operations if o['completed_by_unit'] is None]
             if not remaining or request.form.get('operation_id') != str(remaining[0]['id']):
@@ -110,7 +116,7 @@ def register_serials(app, db, roles_required, now):
                          (unit['tenant_id'], unit['ticket_id'], unit_id, operation['id'], g.user['id'], now()))
             update_unit_state(db(), unit, 'in_progress' if len(remaining) > 1 else 'awaiting_inspection')
             attribution = snapshot(db(), unit['tenant_id'], unit['ticket_id'], operation['id'], g.user['id'], now(), unit_id)
-            unit_event(unit, 'unit_operation_completed', f"{operation['sequence']}: {operation['name']}. {attribution}")
+            unit_event(unit, 'unit_operation_completed', f"{operation['sequence']}: {operation['name']}. Quantity {quantity(db(),g.tenant['id'],unit_id)}. {attribution}")
         if request.form.get('shop_floor') == '1':
             return redirect(url_for('shop_work', code=unit_id))
         return redirect(url_for('unit_detail', unit_id=unit_id))
@@ -127,6 +133,9 @@ def register_serials(app, db, roles_required, now):
                 abort(403,'A station work contributor cannot inspect this unit.')
             if any(o['completed_by_unit'] == g.user['id'] for o in route(unit)):
                 abort(403, 'A production contributor cannot inspect this unit.')
+            from .lots import info,quantity
+            if info(db(),g.tenant['id'],unit_id) and request.form.get('inspected_quantity')!=str(quantity(db(),g.tenant['id'],unit_id)):
+                abort(400,'Confirm the quantity inspected on this lot.')
             result, notes = request.form.get('result'), request.form.get('notes', '').strip()
             if result not in {'pass', 'fail'} or not notes or len(notes) > 4000:
                 abort(400, 'Choose pass or fail and record evidence (up to 4000 characters).')

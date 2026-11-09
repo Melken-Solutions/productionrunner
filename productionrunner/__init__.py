@@ -162,6 +162,8 @@ def create_app(config=None):
     register_shop_setup(app,db,roles_required)
     from .intake import register_intake, approved_request, link_ticket, actor as intake_actor
     register_intake(app, db, roles_required, now)
+    from .lots import register as register_lots
+    register_lots(app,db,roles_required,now,lock_ticket,event)
     from .plan_templates import register as register_plan_templates
     register_plan_templates(app, db, roles_required, now)
     from .fulfillment import register_fulfillment
@@ -306,6 +308,8 @@ def create_app(config=None):
         if not 1 <= quantity <= 10000:
             abort(400, 'Quantity must be between 1 and 10000.')
         tracking = request.form.get('tracking', 'batch')
+        lot_mode=tracking=='lot'
+        if lot_mode:tracking='batch'
         serials = [line.strip() for line in request.form.get('serials', '').splitlines() if line.strip()]
         if tracking not in {'batch', 'serial'}:
             abort(400, 'Unknown tracking mode.')
@@ -349,6 +353,12 @@ def create_app(config=None):
             request_plan.apply(db(),g.tenant['id'],request_id,ticket_id,g.user['id'],stamp,event)
             from .materials import snapshot as snapshot_material
             snapshot_material(db(),g.tenant['id'],request_id,ticket_id,event)
+            if lot_mode:
+                from .lots import initialize
+                try:lot_size=int(request.form.get('lot_size') or min(50,quantity))
+                except ValueError:abort(400,'Enter a whole lot size.')
+                initialize(db(),g.tenant['id'],ticket_id,quantity,lot_size)
+                event(ticket_id,'production_lots_enabled',json.dumps(dict(quantity=quantity,lot_size=lot_size)))
             if tracking == 'serial':
                 create_units(db(), g.tenant['id'], ticket_id, serials)
             if part:
@@ -369,6 +379,9 @@ def create_app(config=None):
         next_operation = next((o for o in operations if o['completed_by'] is None), None)
         independent = all(o['completed_by'] != g.user['id'] for o in operations) and not contributed(db(),g.tenant['id'],ticket_id,None,g.user['id'])
         units = units_for(db(), g.tenant['id'], ticket_id)
+        from .lots import enabled
+        if enabled(db(),g.tenant['id'],ticket_id):
+            return redirect(url_for('lot_dashboard',ticket_id=ticket_id))
         if units:
             return render_template('serial_ticket.html', ticket=ticket, units=units, operations=operations, events=events)
         return render_template('ticket.html', ticket=ticket, operations=operations, events=events,

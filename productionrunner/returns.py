@@ -64,7 +64,8 @@ def register_returns(app, db, roles_required, now, lock_ticket, event):
                         if db().execute('SELECT 1 FROM customer_return_units WHERE tenant_id=? AND unit_id=?',(g.tenant['id'],uid)).fetchone():
                             abort(409,'This serial has already been received as a return.')
                         serials.append(unit['serial'])
-                    quantity=len(selected)
+                    from .lots import quantity as lot_quantity
+                    quantity=sum(lot_quantity(db(),g.tenant['id'],uid) for uid in selected)
                 else:
                     if selected:abort(400,'Batch returns use quantities.')
                     try:quantity=int(request.form.get('quantity',''))

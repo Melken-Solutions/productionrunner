@@ -7,7 +7,7 @@ from .admin import epoch
 def progress(conn, tenant, ticket):
     totals = {r['kind']: r['qty'] for r in conn.execute('SELECT kind,SUM(quantity) AS qty FROM fulfillment_active_records WHERE tenant_id=? AND ticket_id=? GROUP BY kind', (tenant, ticket['id']))}
     packed, departed = totals.get('pack', 0), totals.get('depart', 0)
-    units = conn.execute('SELECT COUNT(*) AS total,SUM(CASE WHEN state=\'accepted\' THEN 1 ELSE 0 END) AS accepted FROM serial_units WHERE tenant_id=? AND ticket_id=?', (tenant, ticket['id'])).fetchone()
+    units = conn.execute('SELECT COUNT(*) AS total,SUM(CASE WHEN s.state=\'accepted\' AND COALESCE(l.scrapped,0)=0 THEN COALESCE(l.quantity,1) ELSE 0 END) AS accepted FROM serial_units s LEFT JOIN production_lots l ON l.tenant_id=s.tenant_id AND l.unit_id=s.id WHERE s.tenant_id=? AND s.ticket_id=?', (tenant, ticket['id'])).fetchone()
     accepted = (units['accepted'] or 0) if units['total'] else (ticket['quantity'] if ticket['state'] == 'accepted' else 0)
     pending = conn.execute('SELECT COUNT(*) FROM fulfillment_checks c WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)', (tenant, ticket['id'])).fetchone()[0]
     closed = departed == ticket['quantity']
@@ -87,6 +87,19 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
                     abort(404)
                 if db().execute('SELECT 1 FROM fulfillment_check_results WHERE check_id=?', (check['id'],)).fetchone():
                     abort(409, 'Checkpoint already recorded.')
+                from .lots import enabled
+                if enabled(db(),g.tenant['id'],ticket_id):
+                    ids=request.form.getlist('unit_id')
+                    if not ids or len(ids)!=len(set(ids)):abort(400,'Choose the accepted lots covered by this ERP confirmation.')
+                    reference=text('reference')
+                    for uid in ids:
+                        unit=db().execute("SELECT 1 FROM serial_units s JOIN production_lots l ON l.tenant_id=s.tenant_id AND l.unit_id=s.id WHERE s.tenant_id=? AND s.ticket_id=? AND s.id=? AND s.state='accepted' AND l.scrapped=0",(g.tenant['id'],ticket_id,uid)).fetchone()
+                        if not unit:abort(409,'Confirm only independently accepted lots on this job.')
+                        if db().execute('SELECT 1 FROM lot_check_results WHERE tenant_id=? AND check_id=? AND unit_id=?',(g.tenant['id'],check['id'],uid)).fetchone():abort(409,'This lot checkpoint is already recorded.')
+                        db().execute('INSERT INTO lot_check_results VALUES(?,?,?,?,?,?)',(g.tenant['id'],check['id'],uid,g.user['id'],reference,now()))
+                    event(ticket_id,'lot_checkpoint_completed',json.dumps(dict(check_id=check['id'],units=ids,reference=reference)))
+                    touch(ticket_id)
+                    return redirect(url_for('delivery_detail',ticket_id=ticket_id))
                 if ticket['state'] != 'accepted':
                     abort(409, 'Whole-job checkpoints require production acceptance of the entire ticket.')
                 reference = text('reference')
@@ -156,8 +169,9 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
             if kind=='depart' and db().execute('SELECT 1 FROM shipping_boxes WHERE tenant_id=? AND ticket_id=? AND voided=0',(g.tenant['id'],ticket_id)).fetchone():
                 abort(409,'Dispatch boxed goods from their shipping manifest so labels and quantities stay matched.')
             pending = db().execute('SELECT stage FROM fulfillment_checks c WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)', (g.tenant['id'], ticket_id)).fetchall()
-            if any(c['stage'] == 'pack' or kind == 'depart' for c in pending):
-                abort(409, 'Complete the required checkpoints for this stage first.')
+            from .lots import pending_checks
+            if pending_checks(db(),g.tenant['id'],ticket_id,request.form.getlist('unit_id'),kind):
+                abort(409, 'Complete the required checkpoints for the selected lots and stage first.')
             from .job_plan import evidence
             evidence(db(),g.tenant['id'],ticket_id,'packing' if kind=='pack' else 'shipping',event)
             selected = request.form.getlist('unit_id')
@@ -175,7 +189,8 @@ def register_fulfillment(app, db, roles_required, now, lock_ticket, event):
                     if kind in done or (kind == 'depart' and 'pack' not in done):
                         abort(409, 'Unit already recorded or not yet packed.')
                     serial_names.append(unit['serial'])
-                quantity = len(selected)
+                from .lots import quantity as lot_quantity
+                quantity = sum(lot_quantity(db(),g.tenant['id'],uid) for uid in selected)
             else:
                 if selected:
                     abort(400, 'Batch tickets use quantities, not serial travelers.')

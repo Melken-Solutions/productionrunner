@@ -270,17 +270,20 @@ def register_shipping(app, db, roles_required, now, event):
                 state=progress(db(),g.tenant['id'],ticket)
                 quantity=sum(b['quantity'] for b in group)
                 if quantity>state['waiting']:abort(409,'Packing quantities changed. Review shipment.')
-                if db().execute('SELECT 1 FROM fulfillment_checks c WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)',(g.tenant['id'],tid)).fetchone():abort(409,'Complete all business-system checkpoints before dispatch.')
+
                 evidence(db(),g.tenant['id'],tid,'shipping',event)
                 units=[]
                 for box in group:
                     if not db().execute("SELECT 1 FROM fulfillment_active_records WHERE tenant_id=? AND id=? AND kind='pack'",(g.tenant['id'],box['pack_record_id'])).fetchone():abort(409,'Packing record was reversed.')
                     units.extend(db().execute("SELECT s.id,s.serial,s.state FROM fulfillment_active_units f JOIN serial_units s ON s.tenant_id=f.tenant_id AND s.id=f.unit_id WHERE f.tenant_id=? AND f.record_id=? AND f.kind='pack'",(g.tenant['id'],box['pack_record_id'])).fetchall())
                 if state['serial']:
-                    if len(units)!=quantity or len({u['id'] for u in units})!=quantity:abort(409,'Serial manifest mismatch.')
+                    from .lots import quantity as lot_quantity
+                    if sum(lot_quantity(db(),g.tenant['id'],u['id']) for u in units)!=quantity or len({u['id'] for u in units})!=len(units):abort(409,'Traveler manifest quantity mismatch.')
                     for u in units:
                         if u['state']!='accepted' or db().execute("SELECT 1 FROM fulfillment_active_units WHERE tenant_id=? AND unit_id=? AND kind='depart'",(g.tenant['id'],u['id'])).fetchone():abort(409,'Serial is unaccepted or already departed.')
                 elif ticket['state']!='accepted':abort(409,'Production must be accepted.')
+                from .lots import pending_checks
+                if pending_checks(db(),g.tenant['id'],tid,[u['id'] for u in units],'depart'):abort(409,'Complete business-system checkpoints for the selected lots before dispatch.')
                 serials=[u['serial'] for u in units]
                 rec=db().execute('INSERT INTO fulfillment_records(tenant_id,ticket_id,kind,quantity,destination,reference,method,notes,serials,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(g.tenant['id'],tid,'depart',quantity,load['destination_name']+' — '+load['destination_address'],load['reference'],'external',notes,json.dumps(serials),g.user['id'],now()))
                 db().execute('INSERT INTO shipping_departures(tenant_id,load_id,ticket_id,record_id) VALUES(?,?,?,?)',(g.tenant['id'],lid,tid,rec.lastrowid))

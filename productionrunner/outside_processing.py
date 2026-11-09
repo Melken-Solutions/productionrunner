@@ -33,7 +33,8 @@ def status(conn, tenant, operation, unit=None):
     if not plan:
         return ''
     moves = ledger(conn, tenant, operation)
-    def amount(m): return int(unit in m['units']) if unit else m['quantity']
+    from .lots import quantity as lot_quantity
+    def amount(m): return lot_quantity(conn,tenant,unit) * int(unit in m['units']) if unit else m['quantity']
     sent = sum(amount(m) for m in moves if m['kind']=='send')
     received = sum(amount(m) for m in moves if m['kind']=='receive')
     failed = sum(amount(m) for m in moves if m['kind']=='receive' and m['inspection'] and m['inspection']['result']=='fail')
@@ -133,7 +134,10 @@ def register_outside(app, db, roles_required, now, lock_ticket, event):
                     serials=[s.strip() for s in serials if s.strip()]
                     selected=[u for u in units if u['serial'] in serials]
                     if not serials or len(set(serials))!=len(serials) or len(selected)!=len(serials):abort(400,'Enter exact unique serial numbers belonging to this ticket.')
-                    ids=[u['id'] for u in selected];quantity=len(ids)
+                    from .lots import quantity as lot_quantity,active
+                    ids=[u['id'] for u in selected]
+                    for uid in ids:active(db(),g.tenant['id'],uid)
+                    quantity=sum(lot_quantity(db(),g.tenant['id'],uid) for uid in ids)
                 else:
                     try:quantity=int(request.form.get('quantity',''))
                     except ValueError:abort(400,'Enter a whole quantity.')

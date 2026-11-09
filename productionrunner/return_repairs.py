@@ -94,6 +94,12 @@ def register_return_repairs(app,db,roles_required,now,lock_ticket,event):
                 from .materials import snapshot as snapshot_material
                 snapshot_material(db(),g.tenant['id'],req['id'],tid,event,original=ticket_id)
                 create_units(db(),g.tenant['id'],tid,serials)
+                from .lots import enabled,quantity as lot_quantity
+                if enabled(db(),g.tenant['id'],ticket_id):
+                    db().execute('INSERT INTO lot_jobs VALUES(?,?)',(g.tenant['id'],tid))
+                    for original_unit in db().execute('SELECT s.id,s.serial FROM customer_return_units r JOIN serial_units s ON s.id=r.unit_id AND s.tenant_id=r.tenant_id WHERE r.tenant_id=? AND r.return_id=?',(g.tenant['id'],return_id)).fetchall():
+                        new_unit=db().execute('SELECT id FROM serial_units WHERE tenant_id=? AND ticket_id=? AND serial=?',(g.tenant['id'],tid,original_unit['serial'])).fetchone()
+                        db().execute('INSERT INTO production_lots(tenant_id,ticket_id,unit_id,quantity) VALUES(?,?,?,?)',(g.tenant['id'],tid,new_unit['id'],lot_quantity(db(),g.tenant['id'],original_unit['id'])))
                 db().execute('INSERT INTO ticket_drawings VALUES(?,?,?)',(g.tenant['id'],tid,part['id']))
                 db().execute('INSERT INTO return_repairs VALUES(?,?,?,?,?,?,?)',(g.tenant['id'],ticket_id,return_id,tid,g.user['id'],reason,stamp))
                 for unit in db().execute('SELECT s.id,s.serial FROM customer_return_units r JOIN serial_units s ON s.id=r.unit_id AND s.tenant_id=r.tenant_id WHERE r.tenant_id=? AND r.return_id=?',(g.tenant['id'],return_id)).fetchall():

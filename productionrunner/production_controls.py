@@ -77,6 +77,8 @@ def register_controls(app, db, roles_required, now, lock_ticket):
                 target = db().execute('SELECT * FROM serial_units WHERE tenant_id=? AND ticket_id=? AND id=?', (g.tenant['id'], ticket_id, unit_id)).fetchone()
                 if not target:
                     abort(404, 'Choose a unit belonging to this ticket.')
+                from .lots import active
+                active(db(),g.tenant['id'],unit_id)
             elif unit_id:
                 abort(404, 'This ticket has no individual units.')
             if target['state'] != 'held':
@@ -111,6 +113,9 @@ def register_controls(app, db, roles_required, now, lock_ticket):
         db().execute('BEGIN IMMEDIATE')
         case = get_case(case_id)
         require_active(db(), g.tenant['id'], case['ticket_id'])
+        if case['unit_id']:
+            from .lots import active
+            active(db(),g.tenant['id'],case['unit_id'])
         if request.form.get('version') != str(case['version']) or case['result']:
             abort(409, 'This rework case changed or is closed. Reload before submitting.')
         return case
@@ -155,6 +160,10 @@ def register_controls(app, db, roles_required, now, lock_ticket):
             state = 'accepted' if result == 'pass' else 'held'
             if case['unit_id']:
                 unit = db().execute('SELECT * FROM serial_units WHERE tenant_id=? AND id=?', (g.tenant['id'], case['unit_id'])).fetchone()
+                from .lots import info
+                if result=='pass' and info(db(),g.tenant['id'],unit['id']):
+                    pending=db().execute('SELECT COUNT(*) FROM operations o WHERE o.tenant_id=? AND o.ticket_id=? AND NOT EXISTS(SELECT 1 FROM unit_completions c WHERE c.tenant_id=o.tenant_id AND c.operation_id=o.id AND c.unit_id=?)',(g.tenant['id'],unit['ticket_id'],unit['id'])).fetchone()[0]
+                    if pending:state='in_progress'
                 update_unit_state(db(), unit, state)
             else:
                 db().execute('UPDATE tickets SET state=?,version=version+1 WHERE tenant_id=? AND id=?', (state, g.tenant['id'], case['ticket_id']))

@@ -30,7 +30,10 @@ def board_data(conn,tenant_id,station_id=None):
         per_op={op['id']:defaultdict(int) for op in ops}
         stages=defaultdict(int);held=0;ready=0;inspection=0;accepted=0;final_held=0
         for target in targets:
-            amount=1 if target['id'] else ticket['quantity']
+            from .lots import info,quantity as lot_quantity
+            lot=info(conn,tenant_id,target['id']) if target['id'] else None
+            if lot and lot['scrapped']:continue
+            amount=lot_quantity(conn,tenant_id,target['id']) if target['id'] else ticket['quantity']
             if target['state']=='accepted':
                 accepted+=amount;continue
             pending=[op for op in ops if (op['id'] not in completions[target['id']] if target['id'] else op['completed_by'] is None)]

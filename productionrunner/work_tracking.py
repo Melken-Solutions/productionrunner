@@ -32,6 +32,10 @@ def open_sessions(conn,tenant):
 
 
 def contributed(conn,tenant,tid,uid,user):
+    from .lots import ancestors
+    if uid and any(contributed(conn,tenant,tid,parent,user) for parent in ancestors(conn,tenant,uid)[:1]):
+        return True
+    if uid and conn.execute('SELECT 1 FROM rework_cases WHERE tenant_id=? AND unit_id=? AND completed_by=?',(tenant,uid,user)).fetchone():return True
     # Custody handlers cannot independently inspect their own outside work.
     for move in conn.execute('SELECT unit_ids FROM outside_moves WHERE tenant_id=? AND ticket_id=? AND actor_id=?',(tenant,tid,user)):
         if uid is None or uid in json.loads(move['unit_ids']):return True
@@ -87,7 +91,8 @@ def finish_work(conn,tenant,ticket,operation,user,stamp,event,unit=None):
     if not started and not required(conn,tenant):return
     active=next((s for s in open_sessions(conn,tenant) if s['ticket_id']==ticket['id'] and s['unit_id']==uid and s['operation_id']==operation['id']),None)
     if not active or active['action']=='pause' or active['actor_id']!=user:abort(409,'Start or resume your station work session before finishing this operation.')
-    quantity=1 if unit else ticket['quantity']
+    from .lots import quantity as lot_quantity
+    quantity=lot_quantity(conn,tenant,unit['id']) if unit else ticket['quantity']
     if request.form.get('completed_quantity')!=str(quantity):abort(400,f'Confirm the completed quantity: {quantity}. Batch operations finish the whole batch.')
     append_event(conn,tenant,active,user,'finish',f'Completed quantity {quantity}',clock(),event)
     validate_timeline(conn,tenant,clock())
@@ -102,6 +107,9 @@ def register_work_tracking(app,db,roles_required,now,event):
         uid=code if code.startswith('JR-U-') else None
         unit=db().execute('SELECT * FROM serial_units WHERE tenant_id=? AND id=?',(g.tenant['id'],uid)).fetchone() if uid else None
         if uid and not unit:abort(404)
+        if unit:
+            from .lots import active
+            active(db(),g.tenant['id'],uid)
         tid=unit['ticket_id'] if unit else code
         ticket=db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',(g.tenant['id'],tid)).fetchone()
         if not ticket:abort(404)

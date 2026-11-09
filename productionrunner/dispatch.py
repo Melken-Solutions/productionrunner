@@ -132,8 +132,8 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
             if not op: abort(404,'Unknown operation.')
             from .outside_processing import require_internal
             require_internal(db(),g.tenant['id'],operation_id)
-            count=db().execute('SELECT COUNT(*) FROM serial_units WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id)).fetchone()[0]
-            done=db().execute('SELECT COUNT(*) FROM unit_completions WHERE tenant_id=? AND operation_id=?',(g.tenant['id'],operation_id)).fetchone()[0]
+            count=db().execute('SELECT COUNT(*) FROM serial_units s WHERE tenant_id=? AND ticket_id=? AND NOT EXISTS(SELECT 1 FROM production_lots l WHERE l.tenant_id=s.tenant_id AND l.unit_id=s.id AND l.scrapped=1)',(g.tenant['id'],ticket_id)).fetchone()[0]
+            done=db().execute('SELECT COUNT(*) FROM unit_completions c WHERE tenant_id=? AND operation_id=? AND NOT EXISTS(SELECT 1 FROM production_lots l WHERE l.tenant_id=c.tenant_id AND l.unit_id=c.unit_id AND l.scrapped=1)',(g.tenant['id'],operation_id)).fetchone()[0]
             if op['completed_by'] or (count and done==count): abort(409,'This operation is completed. Its assignment history is preserved.')
             s=db().execute('SELECT * FROM stations WHERE tenant_id=? AND id=? AND active=1',(g.tenant['id'],request.form.get('station_id'))).fetchone()
             if not s: abort(400,'Choose an active station in this organization.')

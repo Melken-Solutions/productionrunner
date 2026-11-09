@@ -715,3 +715,35 @@ CREATE INDEX IF NOT EXISTS part_plan_templates_actor ON part_plan_templates(tena
 
 CREATE TRIGGER IF NOT EXISTS part_plan_templates_no_update BEFORE UPDATE ON part_plan_templates BEGIN SELECT RAISE(ABORT,'Plan templates are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS part_plan_templates_no_delete BEFORE DELETE ON part_plan_templates BEGIN SELECT RAISE(ABORT,'Plan templates are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS lot_jobs (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT PRIMARY KEY,
+ UNIQUE(tenant_id,ticket_id),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS production_lots (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,unit_id TEXT PRIMARY KEY,
+ quantity INTEGER NOT NULL CHECK(quantity>0),parent_id TEXT,scrapped INTEGER NOT NULL DEFAULT 0 CHECK(scrapped IN (0,1)),
+ UNIQUE(tenant_id,unit_id),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES lot_jobs(tenant_id,ticket_id),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,parent_id) REFERENCES serial_units(tenant_id,ticket_id,id)
+);
+CREATE INDEX IF NOT EXISTS production_lots_ticket ON production_lots(tenant_id,ticket_id);
+CREATE INDEX IF NOT EXISTS production_lots_parent ON production_lots(tenant_id,ticket_id,parent_id);
+CREATE TABLE IF NOT EXISTS lot_check_results (
+ tenant_id INTEGER NOT NULL,check_id INTEGER NOT NULL,unit_id TEXT NOT NULL,actor_id INTEGER NOT NULL,reference TEXT NOT NULL,created_at TEXT NOT NULL,
+ PRIMARY KEY(check_id,unit_id),
+ FOREIGN KEY(tenant_id,check_id) REFERENCES fulfillment_checks(tenant_id,id),
+ FOREIGN KEY(tenant_id,unit_id) REFERENCES production_lots(tenant_id,unit_id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS lot_checks_unit ON lot_check_results(tenant_id,unit_id);
+CREATE INDEX IF NOT EXISTS lot_checks_actor ON lot_check_results(tenant_id,actor_id);
+
+CREATE TRIGGER IF NOT EXISTS lot_check_no_update BEFORE UPDATE ON lot_check_results BEGIN SELECT RAISE(ABORT,'Lot checkpoint evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS lot_check_no_delete BEFORE DELETE ON lot_check_results BEGIN SELECT RAISE(ABORT,'Lot checkpoint evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS lot_job_no_update BEFORE UPDATE ON lot_jobs BEGIN SELECT RAISE(ABORT,'Lot job identity is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS lot_job_no_delete BEFORE DELETE ON lot_jobs BEGIN SELECT RAISE(ABORT,'Lot job identity is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS lot_no_delete BEFORE DELETE ON production_lots BEGIN SELECT RAISE(ABORT,'Lot history cannot be deleted'); END;
+CREATE TRIGGER IF NOT EXISTS lot_identity BEFORE UPDATE ON production_lots WHEN NEW.tenant_id!=OLD.tenant_id OR NEW.ticket_id!=OLD.ticket_id OR NEW.unit_id!=OLD.unit_id OR NEW.parent_id IS NOT OLD.parent_id OR NEW.quantity>OLD.quantity OR (OLD.scrapped=1 AND (NEW.scrapped!=1 OR NEW.quantity!=OLD.quantity)) BEGIN SELECT RAISE(ABORT,'Lot identity and scrapped quantities are immutable'); END;
