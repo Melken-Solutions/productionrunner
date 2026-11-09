@@ -147,7 +147,9 @@ def test_display_account_cannot_mutate_or_read_travelers(app):
     assert runner.invoke(args=['set-membership','viewer','--tenant','alpha','--roles','display,operator']).exit_code!=0
     sign_in(client,'viewer')
     assert client.get('/tv').status_code==200 and client.get('/tv/data').status_code==200
-    for url in [path,'/parts','/shop-floor','/admin','/security-history']:
+    assert b'aria-label="Main navigation"' not in client.get('/tv').data
+    assert b'Back to ProductionRunner' not in client.get('/tv/board').data
+    for url in ['/',path,'/parts','/shop-floor','/admin','/security-history']:
         assert client.get(url).status_code==403
     assert post(client,path+'/complete',version='1',operation_id=str(ops[0]['id']),confirm='yes').status_code==403
     assert post(client,'/admin/stations',name='No',reason='Test').status_code==403
@@ -225,3 +227,18 @@ def test_whole_board_hot_order_and_display_revocation(app):
     assert response.status_code==200 and response.json['generated_at'] and response.headers['Cache-Control']=='no-store'
     assert runner.invoke(args=['set-membership','viewer','--tenant','alpha','--revoke']).exit_code==0
     assert tv.get('/tv/data').location=='/login'
+
+
+@pytest.mark.parametrize('username', ['admin', 'planner'])
+def test_staff_can_return_from_tv_boards(app, username):
+    client=app.test_client()
+    sign_in(client,username)
+    chooser=client.get('/tv')
+    assert chooser.status_code==200
+    assert b'aria-label="Main navigation"' in chooser.data
+    if username=='admin':
+        assert b'Organization Admin' in chooser.data
+    live=client.get('/tv/board')
+    assert live.status_code==200
+    assert b'href="/">Back to ProductionRunner</a>' in live.data
+    assert client.get('/').status_code==200
