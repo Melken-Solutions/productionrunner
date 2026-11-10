@@ -1,4 +1,5 @@
 """Tenant request intake and explicit production-document readiness approval."""
+from . import delivery_schedule
 import json
 import re
 import secrets
@@ -37,6 +38,7 @@ def approved_request(conn, tenant, rid, version=None):
     validate_material(conn,tenant,rid)
     from .vendors import validate_request as validate_vendor
     validate_vendor(conn,tenant,rid)
+    delivery_schedule.validate_request(conn, tenant, row)
     request_plan.validate(conn, tenant, rid)
     custom_fields.validate(conn, tenant, rid)
     approval = conn.execute("SELECT detail FROM intake_events WHERE tenant_id=? AND request_id=? AND action='documents_approved' ORDER BY id DESC LIMIT 1", (tenant, rid)).fetchone()
@@ -51,6 +53,7 @@ def log(conn, tenant, user, rid, action, detail, stamp):
 
 
 def link_ticket(conn, tenant, user, req, tid, stamp):
+    delivery_schedule.snapshot(conn,tenant,user,req,tid,stamp)
     custom_fields.snapshot(conn,tenant,req["id"],tid)
     conn.execute("UPDATE intake_requests SET status='ticketed',ticket_id=?,version=version+1 WHERE tenant_id=? AND id=?", (tid, tenant, req['id']))
     log(conn, tenant, user, req['id'], 'ticket_created', dict(ticket_id=tid, approved_part=req['part_id']), stamp)
@@ -73,7 +76,7 @@ def document_state(conn, tenant, row):
 def register_intake(app, db, roles_required, now):
     @app.context_processor
     def intake_context():
-        return dict(request_job_plan=lambda rid:request_plan.get(db(),g.tenant["id"],rid), request_outside=lambda rid:get_plan(db(),g.tenant['id'],rid), request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
+        return dict(request_delivery_schedule=lambda rid:delivery_schedule.request_schedule(db(),g.tenant["id"],rid), request_job_plan=lambda rid:request_plan.get(db(),g.tenant["id"],rid), request_outside=lambda rid:get_plan(db(),g.tenant['id'],rid), request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
 
     def fields():
         data = {key: request.form.get(key, '').strip() for key in EDIT_FIELDS}
@@ -123,6 +126,7 @@ def register_intake(app, db, roles_required, now):
         if request.method == 'GET':
             return render_template('intake_form.html', entry=None, parts=choices(), sources=SOURCES)
         data = fields()
+        schedule = delivery_schedule.parse(request.form,data['quantity'],data['required_date'])
         outside = outside_fields(request.form)
         rid = 'REQ-' + secrets.token_hex(6).upper()
         with db():
@@ -143,6 +147,7 @@ def register_intake(app, db, roles_required, now):
             request_plan.save(db(),g.tenant['id'],rid,plan)
             uploaded = request_documents.save(db(),g.tenant['id'],g.user['id'],data,now())
             if uploaded: log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',uploaded,now())
+            delivery_schedule.save_request(db(),g.tenant['id'],g.user['id'],rid,schedule,now())
             log(db(), g.tenant['id'], g.user['id'], rid, 'request_received', dict(data, outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), now())
         return redirect(url_for('intake_detail', rid=rid))
 
@@ -175,6 +180,8 @@ def register_intake(app, db, roles_required, now):
                 from .catalog import active
                 existing=matching_part(db(),g.tenant['id'],data['pn'],data['revision'])
                 if existing: active(db(),g.tenant['id'],existing['id'])
+            previous_schedule=delivery_schedule.request_schedule(db(),g.tenant['id'],rid)
+            schedule=delivery_schedule.parse(request.form,data['quantity'],data['required_date'],previous_schedule)
             before = {key: row[key] for key in EDIT_FIELDS}
             from .materials import select_material,save_request,request_material
             material=select_material(db(),g.tenant['id'],request.form)
@@ -187,12 +194,13 @@ def register_intake(app, db, roles_required, now):
             custom=custom_fields.collect(db(),g.tenant['id'],request.form,previous_custom)
             uploaded = request_documents.save(db(),g.tenant['id'],g.user['id'],data,now())
             if uploaded: log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',uploaded,now())
-            if uploaded or previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
+            if schedule != previous_schedule or uploaded or previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
                 db().execute('UPDATE intake_requests SET ' + ','.join(key+'=?' for key in EDIT_FIELDS) + ",status='preparing',part_id=NULL,approved_by=NULL,approved_at=NULL,version=version+1 WHERE tenant_id=? AND id=?", (*(data[k] for k in EDIT_FIELDS), g.tenant['id'], rid))
                 save_request(db(),g.tenant['id'],rid,material)
                 save_outside(db(),g.tenant['id'],rid,outside)
                 request_plan.save(db(),g.tenant['id'],rid,plan)
                 custom_fields.save(db(),g.tenant['id'],rid,custom)
+                delivery_schedule.save_request(db(),g.tenant['id'],g.user['id'],rid,schedule,now(),why)
                 log(db(), g.tenant['id'], g.user['id'], rid, 'request_edited', dict(before=dict(before,outside_processing=previous_outside,material=previous_material,job_plan=previous_plan,custom_fields=previous_custom), after=dict(data,outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), reason=why, approval_invalidated=row['status']=='approved'), now())
         return redirect(url_for('intake_detail', rid=rid))
 
@@ -231,6 +239,7 @@ def register_intake(app, db, roles_required, now):
                 validate_vendor(db(),g.tenant['id'],rid)
                 request_plan.validate(db(),g.tenant['id'],rid)
                 custom_fields.validate(db(),g.tenant['id'],rid)
+                delivery_schedule.validate_request(db(),g.tenant['id'],row)
                 docs = document_state(db(), g.tenant['id'], row)
                 if not docs['ready']:
                     abort(409, 'Upload the required matching production documents before approval.')

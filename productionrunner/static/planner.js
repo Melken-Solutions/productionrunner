@@ -24,6 +24,8 @@
       const edit = node('button','Edit','secondary'); edit.type='button'; edit.addEventListener('click',()=>show(target)); box.append(edit);review.append(box);
     }
     card(`${value('pn') || 'Choose a part'} · Rev ${value('revision') || '—'}`, [`${value('quantity') || '—'} ${value('quantity')==='1'?'unit':'units'} · Due ${value('required_date') || 'not specified'}`, `Material: ${selected('material_id')}`,value('description') || 'Describe the requested work',`Customer: ${value('requester') || 'needed'} · Destination: ${value('destination') || 'needed'}`],0);
+    const shipments=[...form.querySelectorAll('.shipment-row')].filter(r=>r.querySelector('[name=shipment_quantity]').value).map(r=>`${r.querySelector('[name=shipment_quantity]').value} units · Ship by ${r.querySelector('[name=shipment_date]').value || 'choose a date'}`);
+    card('Delivery plan',value('delivery_mode')==='staged'?['Produce & ship in stages',...shipments,form.querySelector('[data-schedule-balance]')?.textContent || '']:['Ship all together'],0);
     const shopDetails=[...form.querySelectorAll('[data-custom-label]')].map(el=>`${el.dataset.customLabel}: ${el.value || 'Not specified'}`);
     if(shopDetails.length)card('Shop details',shopDetails,0);
     card('Production route', names.map((name,i)=>`${i+1}. ${name}`),1);

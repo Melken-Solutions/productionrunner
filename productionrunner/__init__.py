@@ -318,6 +318,10 @@ def create_app(config=None):
         if not 1 <= quantity <= 10000:
             abort(400, 'Quantity must be between 1 and 10000.')
         tracking = request.form.get('tracking', 'batch')
+        from .delivery_schedule import request_schedule
+        staged=request_schedule(db(),g.tenant['id'],request_id)['mode']=='staged'
+        if staged and tracking=='batch':
+            abort(400,'Staged deliveries require production lots or independent serial units.')
         lot_mode=tracking=='lot'
         if lot_mode:tracking='batch'
         serials = [line.strip() for line in request.form.get('serials', '').splitlines() if line.strip()]

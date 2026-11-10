@@ -1,15 +1,18 @@
+{% set saved_schedule=ticket_delivery_schedule(ticket) %}
+{% if saved_schedule %}<section class="card"><h2>Delivery schedule</h2><table><thead><tr><th>Quantity</th><th>Ship by</th><th>Shipped</th></tr></thead><tbody>{% set running=namespace(baseline=saved_schedule.departed_at_start) %}{% for s in saved_schedule.shipments %}<tr><td>{{ s.quantity }}</td><td>{{ s.ship_date }}</td><td>{{ [s.quantity,[0,delivery.departed-running.baseline]|max]|min }} / {{ s.quantity }}</td></tr>{% set running.baseline=running.baseline+s.quantity %}{% endfor %}</tbody></table><p>The next outstanding shipment becomes the live target automatically. Physical departures determine progress.</p></section>{% endif %}
 {% if ('planner' in g.roles or 'admin' in g.roles) and not cancellation_for(ticket) and not delivery.closed %}
 <section class="card" id="shipment-plan"><h2>Produce &amp; ship in stages</h2>
 {% if delivery.serial %}
-<p>Plan the next delivery without waiting for the whole order. A shipment can contain one or several production lots.</p>
-<details{% if not shipment_target(ticket) %} open{% endif %}><summary>Set next shipment quantity &amp; date</summary>
-<form method="post" class="stack" action="{{ url_for('set_shipment_target',ticket_id=ticket.id) }}">
+<details{% if not saved_schedule and not shipment_target(ticket) %} open{% endif %}><summary>{{ 'Edit remaining delivery schedule' if saved_schedule else 'Plan remaining shipment quantities & dates' }}</summary>
+<p>Schedule all {{ delivery.remaining }} units still owed. Already-shipped quantities stay in history. Updating this schedule replaces the remaining plan, starting from {{ delivery.departed }} departed units.</p>
+<form method="post" class="stack" action="{{ url_for('set_delivery_schedule',ticket_id=ticket.id) }}">
 <input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ ticket.version }}">
-<label>Quantity still to ship for this target<input type="number" name="quantity" min="1" max="{{ delivery.remaining }}" required></label>
-<label>Required ship date<input type="date" name="ship_date" required></label>
-<p>{{ delivery.departed }} already shipped · {{ delivery.remaining }} still owed. This replaces the current target, starting from the quantity already shipped. It does not create lots or change the order deadline.</p>
+{% set editable=namespace(rows=[],baseline=saved_schedule.departed_at_start if saved_schedule else delivery.departed) %}
+{% if saved_schedule %}{% for s in saved_schedule.shipments %}{% set remaining=[s.quantity,[0,editable.baseline+s.quantity-delivery.departed]|max]|min %}{% if remaining %}{% set editable.rows=editable.rows+[{'quantity':remaining,'ship_date':s.ship_date}] %}{% endif %}{% set editable.baseline=editable.baseline+s.quantity %}{% endfor %}{% endif %}
+{% with schedule={'mode':'staged','shipments':editable.rows},schedule_total=delivery.remaining,schedule_edit=true %}{% include 'delivery_schedule_fields.html' %}{% endwith %}
 {% with reason_group='planning', reason_required=true %}{% include 'reason_fields.html' %}{% endwith %}
-<button>Save next shipment target</button>
+<button>Save delivery schedule</button>
 </form></details>
 {% else %}<p>This job currently moves as one batch. Enable production lots to produce, inspect and ship smaller quantities independently.</p><a class="button secondary" href="{{ url_for('lot_dashboard',ticket_id=ticket.id) }}">Set up partial production runs</a>{% endif %}
 </section>{% endif %}
+<script src="{{ url_for('static',filename='delivery-schedule.js') }}" defer></script>
