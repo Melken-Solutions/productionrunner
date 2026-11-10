@@ -11,7 +11,7 @@
 <p>Text on brand-colored backgrounds automatically uses black or white for contrast. HOT, hold, stale warnings and barcode colors are fixed.</p>
 <label>Company logo (PNG/JPEG, up to 2 MB and 2048 × 2048 pixels)<input type="file" name="logo" accept="image/png,image/jpeg"></label>
 <label class="check"><input type="checkbox" name="remove_logo" value="yes" {% if preview and not settings.logo %}checked{% endif %}>Remove logo</label>
-<label>Reason for saving or resetting (required when saving)<textarea name="reason" maxlength="500">{{ request.form.get('reason','') }}</textarea></label>
+{% with reason_group='change', reason_required=false %}{% include 'reason_fields.html' %}{% endwith %}
 <div class="row"><button name="action" value="preview">Preview changes</button><button name="action" value="save">Save branding</button><button class="secondary" name="action" value="reset">Reset to defaults</button></div>
 </form>
 <section class="card"><h2>{{ 'Unsaved' if preview else 'Current' }} appearance</h2>

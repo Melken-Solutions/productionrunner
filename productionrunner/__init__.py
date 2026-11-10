@@ -87,6 +87,8 @@ def create_app(config=None):
             request.max_content_length = 11 * 1024 * 1024
         elif request.endpoint == 'upload_dxf':
             request.max_content_length = 21 * 1024 * 1024
+        elif request.endpoint in {'intake_new','intake_edit','intake_documents','manage_part'}:
+            request.max_content_length = 31 * 1024 * 1024
         elif request.endpoint != 'new_part':
             request.max_content_length = 64 * 1024
         g.app_db = app.config['DATABASE']
@@ -148,6 +150,8 @@ def create_app(config=None):
             abort(409, 'This ticket changed. Reload before submitting again.')
         return ticket
 
+    from . import reason_choices
+    reason_choices.register(app)
     from .workflow_defaults import register_workflow_defaults, settings as workflow_settings, validate_ticket as validate_workflow, snapshot as snapshot_workflow
     register_workflow_defaults(app, db, roles_required)
     from .job_plan import register_job_plan

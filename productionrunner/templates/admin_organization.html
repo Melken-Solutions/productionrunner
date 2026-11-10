@@ -8,7 +8,7 @@
 <div class="grid"><label>Contact name (optional)<input name="contact_name" value="{{ organization.contact_name }}" maxlength="160" autocomplete="name"></label><label>Contact email (optional)<input name="contact_email" type="email" value="{{ organization.contact_email }}" maxlength="254" autocomplete="email"></label></div>
 <label>Phone (optional)<input name="phone" type="tel" value="{{ organization.phone }}" maxlength="60" autocomplete="tel"></label>
 <label>Address (optional, up to 1,000 characters)<textarea name="address" rows="4" maxlength="1000" autocomplete="street-address">{{ organization.address }}</textarea></label>
-<label>Reason for change (up to 500 characters)<textarea name="reason" required maxlength="500" rows="2"></textarea></label>
+{% with reason_group='change', reason_required=true %}{% include 'reason_fields.html' %}{% endwith %}
 <button>Save organization details</button></form></section>
 <p><a href="{{ url_for('admin_users') }}">Manage organization members</a> · <a href="{{ url_for('security_history') }}">View change history</a></p>
 {% endblock %}
