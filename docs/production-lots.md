@@ -4,6 +4,8 @@ One production request and approved Job Plan can cover many production runs and 
 
 ## Planning
 
+In the initial request, beside quantity, choose **Produce & ship in stages** and enter the shipment quantities/dates. The full quantity must be scheduled before approval. The approved [delivery schedule](staged-shipments.md) carries into the job, and the next outstanding shipment advances automatically from actual departures. Shipment quantities and lot sizes are separate.
+
 Create a JobRunner from the approved request. Production lots is the default UI tracking choice; choose a typical lot quantity (default 50, limited to the order quantity). The app creates lot travelers automatically, including a smaller final remainder. Whole-batch and individually serialized tracking remain available.
 
 For example, an order for 580 creates eleven 50-piece lots and one 30-piece lot. Each shares the approved route, material, documents and station assignments. No repeated requests or manually reentered routes are needed. An existing unstarted batch can be enabled from its Production lots link. Jobs with existing production, timing, vendor custody or delivery history cannot be converted automatically.

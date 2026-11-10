@@ -22,7 +22,7 @@ Admin → Custom fields defines organization-specific request details with text,
 
 New Request and Edit Request render these fields under Shop details. A configuration revision token rejects stale forms. Values are validated server-side; required values are enforced at approval rather than draft save. Explicit request edits adopt the current definitions and invalidate approval when the saved field snapshot changes. Existing requests are not silently rewritten when the admin changes configuration. On explicit edit, retired fields retain their previous evidence and cease to block approval.
 
-Conversion snapshots definition IDs, labels, types, options, requirements, versions and values into immutable JobRunner storage. Requests, tickets, unit screens and printed travelers display these details. Fields are request/job level, not per-unit measurements or automatic routing conditions. PN templates, gauge-to-station automation and a cloud database migration remain separate work.
+Conversion snapshots definition IDs, labels, types, options, requirements, versions and values into immutable JobRunner storage. Requests, tickets, unit screens and printed travelers display these details. Fields are request/job level, not per-unit measurements or automatic routing conditions. PN plan templates and PostgreSQL hosting are documented in [part templates](part-plan-templates.md) and [database migration](postgresql-migration.md). Custom fields do not themselves create automatic routing rules.
 
 
 ## Guided onboarding and invitations

@@ -1,6 +1,6 @@
 # Controlled Job Plan
 
-The planner creates a JobRunner from an approved request, then opens **Job Plan**.
+The planner builds the initial Job Plan in **New production request → How will we make it?**, after selecting the part, quantity, material and delivery schedule in **What are we making?**. After request approval, create the JobRunner and review/release the copied **Job Plan**. See [staged deliveries](staged-shipments.md), [part templates](part-plan-templates.md) and [operation instructions](operation-library.md).
 Production operations remain in their creation order, with station/operator
 assignments managed independently. Each operation has explicit acceptance criteria
 and can require independent first-piece approval. Inspection, packing and physical

@@ -6,7 +6,11 @@ A runnable, **provisional** manufacturing workflow MVP: one part number per tick
 
 ## Cloud subscription direction
 
-Melken Solutions is the developer/service provider; subscribing shops are customer organizations. Cloud hosting is the primary direction. See the [cloud pilot plan and implemented hosting foundations](docs/cloud-pilot.md). A hosted customer needs no local application server; the local server runbook remains an alternative. No cloud service has been purchased or deployed, and native MFA/billing are not implemented.
+Melken Solutions is the developer/service provider; subscribing shops are customer organizations. Cloud hosting is the primary direction. See the [cloud pilot plan and implemented hosting foundations](docs/cloud-pilot.md). A hosted customer needs no local application server; the local server runbook remains an alternative. The testing service is deployed on Render with Supabase PostgreSQL. Deployment is not a claim of production qualification; native MFA and subscription billing remain separate work.
+
+## User help and current workflow guides
+
+Signed-in shop users can open **Help** in the account navigation for the request-to-delivery walkthrough. See the [documentation index](docs/index.md) for focused guides. Delivery schedules are entered beside quantity in the initial request; production lot size is chosen separately.
 
 ## Initial shop installation
 
@@ -263,7 +267,7 @@ Organization admins open **Admin → Manage workflow defaults** to configure nam
 
 New tickets show the current policy and capture an immutable snapshot with its version. Checkpoints are copied to the existing delivery-gate tables in the same transaction as ticket creation. Subsequent changes affect only future tickets. Ticket creation rejects forms opened against an older policy, including direct submissions that omit the policy version once defaults have been configured. Existing tickets are not backfilled or changed. Approved production requests are mandatory for all new jobs, including repairs, regardless of stored legacy workflow settings. No ERP checkpoints are inferred when defaults are unconfigured. Custom intake still requires PDF/DXF readiness review in every configuration.
 
-At most 20 distinct checkpoint names (120 characters each) can be configured. Empty lists mean no additional ERP gates; inspection, physical packing and departure confirmations remain mandatory. Inherited gates are whole-ticket requirements and can delay partial serial shipment until the whole job is accepted; they do not implement per-shipment ERP transactions or automatically communicate with SAP. Planners/admins may still add ticket-specific requirements before the corresponding stage starts, within the total 20-checkpoint limit. Checkpoint waivers/corrections remain future audited workflows. Customer return receipt/disposition is described below.
+At most 20 distinct checkpoint names (120 characters each) can be configured. Empty lists mean no additional ERP gates; inspection, physical packing and departure confirmations remain mandatory. Production-lot jobs can record ERP checkpoint evidence for selected accepted lots, allowing partial delivery while other lots continue. Whole-batch and ordinary serial jobs retain their whole-ticket checkpoint behavior. These records do not execute ERP transactions or automatically communicate with SAP. Planners/admins may still add ticket-specific requirements before the corresponding stage starts, within the total 20-checkpoint limit. Checkpoint waivers/corrections remain future audited workflows. Customer return receipt/disposition is described below.
 
 Back up and run `init-db` before restart to add `workflow_defaults` and `ticket_workflow`. Existing configuration starts unchanged; no example policy is automatically enabled. No cloud deployment or migration is included.
 

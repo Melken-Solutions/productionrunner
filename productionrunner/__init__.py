@@ -244,6 +244,11 @@ def create_app(config=None):
         session.clear()
         return redirect(url_for('login'))
 
+    @app.get('/help')
+    @roles_required()
+    def help_guide():
+        return render_template('help.html')
+
     @app.get('/')
     @roles_required()
     def index():

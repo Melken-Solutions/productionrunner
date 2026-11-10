@@ -12,7 +12,11 @@ The referenced conversation is `6ab697c2-ea1c-83ea-9f84-82e9a01a8fd3`, “Clean 
 
 These are evidence, not a substitute for the missing versioned specification.
 
-## Implementation traceability
+## Current workflow additions
+
+The table and provisional decisions below record the original implementation baseline, not the complete current product. Current behavior includes [initial request delivery schedules](staged-shipments.md), [partial production lots and deliveries](production-lots.md), [Job Plans](job-plan.md), [PN templates](part-plan-templates.md), [operation libraries](operation-library.md), controlled catalog uploads and Render/Supabase staging. Consult the [documentation index](index.md) for current feature guides. The missing PR v1.9 specification still prevents a claim of full specification compliance.
+
+## Original implementation traceability (historical)
 
 | Requirement | Slice implementation | Verification / gap |
 |---|---|---|
@@ -28,7 +32,7 @@ These are evidence, not a substitute for the missing versioned specification.
 | Evidence/history | Attributed UTC events; inspection notes; immutable event rows | Persistence, rollback and immutability tests |
 | Full PR v1.9 | Not available | **Blocked on source specification; do not approve as compliant** |
 
-## Provisional decisions requiring reconciliation
+## Original provisional decisions (historical; see current guides above)
 
 - Local Flask/SQLite monolith, not a prescribed target production stack.
 - Roles above and their exact permission mapping. `admin` does not silently grant production or inspection powers; accounts can be provisioned by a tenant admin or trusted local CLI.

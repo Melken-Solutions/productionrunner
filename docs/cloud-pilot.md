@@ -1,4 +1,4 @@
-> PostgreSQL implementation update: see [migration and recovery](postgresql-migration.md). The older SQLite pilot guidance below is retained for local/single-instance installations; it does not describe a completed Render/Supabase deployment.
+> Current testing deployment: Render web service with Supabase PostgreSQL. See [migration and recovery](postgresql-migration.md). The older SQLite pilot guidance below is retained for local/single-instance installations; it is not the hosted staging configuration or evidence that all production-readiness checks are complete.
 
 # Cloud subscription product — first customer pilot
 

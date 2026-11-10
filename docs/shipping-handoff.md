@@ -2,6 +2,10 @@
 
 Production purpose, source system and shipping method are separate settings. Admin → Shipping setup defines source defaults and approved ship-to destinations. `erp` represents ERP/SAP requests. Melken Pilot defaults are ERP → make to stock / LTL / planner labels, and Smartsheet → make to order / FedEx / planner labels. Other organizations define their own rules; no customer names or shipping assumptions are hard-coded into workflow logic.
 
+## Delivery schedule versus shipping handoff
+
+The planner defines staged shipment quantities/dates in the initial request. The next outstanding target advances when departures are recorded; it does not create labels, boxes or carrier transactions. One scheduled shipment can combine production lots, and each lot still needs inspection and applicable ERP evidence. See [staged deliveries](staged-shipments.md) and [production lots](production-lots.md).
+
 ## Planner and packing workflow
 
 1. Open the job's Packing & dispatch page → Shipping plan, boxes & labels. Source defaults prefill purpose, shipping method and label responsibility. Review against the request, select an approved destination, and save with a planning or override reason. Later default changes do not alter saved plans.
