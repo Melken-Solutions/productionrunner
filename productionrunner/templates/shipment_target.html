@@ -1,0 +1,13 @@
+{% set target=shipment_target(ticket) %}
+{% if target and not cancellation_for(ticket) %}
+<section class="card shipment-target" aria-label="Next shipment target">
+<p class="eyebrow">PRODUCE &amp; SHIP IN STAGES{% if target.hot_priority %} · HOT {{ target.hot_priority }}{% endif %}</p>
+<p>{{ ticket.id }} · {{ ticket.pn }} · Rev {{ ticket.revision }}</p>
+<h2>{% if target.met %}Shipment target met{% else %}Ship {{ target.remaining }} more by {{ target.ship_date }}{% endif %}</h2>
+<p><strong>Target: {{ target.quantity }} units · Ship by {{ target.ship_date }}</strong>{% if target.overdue %} <span class="badge hot">Past due</span>{% endif %}</p>
+<p>{{ target.accepted }} / {{ target.quantity }} accepted → {{ target.packed }} / {{ target.quantity }} packed → <strong>{{ target.shipped }} / {{ target.quantity }} shipped</strong></p>
+<p>{{ ticket.quantity }} ordered · {{ target.order_remaining }} still owed on the entire order. {% if target.met and target.order_remaining %}Planner: set the next shipment target.{% elif not target.met %}Move ready lots through inspection and shipping while the rest of the order continues.{% endif %}</p>
+{% if not target.met %}<p>Each lot must complete its approved route and independent inspection. Packing, labels and ERP checks still apply; a target is not shipping clearance.</p>{% endif %}
+<a href="{{ url_for('delivery_detail',ticket_id=ticket.id) }}#shipment-plan">Shipment plan &amp; packing</a>
+</section>
+{% endif %}

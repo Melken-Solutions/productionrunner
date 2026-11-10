@@ -172,6 +172,8 @@ def create_app(config=None):
     register_plan_templates(app, db, roles_required, now)
     from .fulfillment import register_fulfillment
     register_fulfillment(app, db, roles_required, now, lock_ticket, event)
+    from .shipment_targets import register as register_shipment_targets
+    register_shipment_targets(app, db, roles_required, lock_ticket, event)
     from .returns import register_returns
     register_returns(app, db, roles_required, now, lock_ticket, event)
     from .return_repairs import register_return_repairs
