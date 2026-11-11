@@ -111,7 +111,7 @@ def register_work_tracking(app,db,roles_required,now,event):
             from .lots import active
             active(db(),g.tenant['id'],uid)
         tid=unit['ticket_id'] if unit else code
-        ticket=db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',(g.tenant['id'],tid)).fetchone()
+        ticket=db().execute('SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND t.id=?',(g.tenant['id'],tid)).fetchone()
         if not ticket:abort(404)
         from .production_controls import require_active
         require_active(db(),g.tenant['id'],tid)
@@ -179,7 +179,9 @@ def register_work_tracking(app,db,roles_required,now,event):
             return redirect(url_for('station_work',code=code))
         ticket,unit,op=target(code)
         active=next((s for s in open_sessions(db(),g.tenant['id']) if s['ticket_id']==ticket['id'] and s['unit_id']==(unit['id'] if unit else None)),None)
-        return render_template('station_work.html',ticket=ticket,unit=unit,target=unit if unit else ticket,op=op,active=active,reasons=reasons(),modes=MODES,code=code,assigned=assignment(db(),g.tenant['id'],op['id']) if op else None)
+        from .job_plan import first_piece_passed
+        first_ready=not op or first_piece_passed(db(),g.tenant['id'],ticket['id'],op['id'])
+        return render_template('station_work.html',first_ready=first_ready,ticket=ticket,unit=unit,target=unit if unit else ticket,op=op,active=active,reasons=reasons(),modes=MODES,code=code,assigned=assignment(db(),g.tenant['id'],op['id']) if op else None)
 
     @app.route('/admin/work',methods=['GET','POST'])
     @roles_required('admin')

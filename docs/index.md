@@ -4,6 +4,8 @@ Shop users: open **Help** in the app for the request → production → inspecti
 
 ## Planning and shop work
 
+- [Tablet operator workspace](operator-workspace.md)
+
 - [Job Plan, approval and release](job-plan.md)
 - [Initial staged-delivery schedule and automatic next target](staged-shipments.md)
 - [Production lots, quantity confirmation and partial delivery](production-lots.md)

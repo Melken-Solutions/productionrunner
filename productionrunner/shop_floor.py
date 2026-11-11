@@ -1,6 +1,6 @@
 """Touch-first read/confirmation views; execution uses the existing guarded endpoints."""
 from .dispatch import released
-from flask import abort, g, redirect, render_template, request, url_for
+from flask import abort, g, redirect, render_template, request, url_for, session
 
 
 def register_shop_floor(app, db, roles_required):
@@ -42,8 +42,22 @@ def register_shop_floor(app, db, roles_required):
     @roles_required('operator')
     def shop_floor():
         page = page_number()
-        tickets = db().execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND t.state!='accepted' AND NOT EXISTS(SELECT 1 FROM ticket_cancellations x WHERE x.tenant_id=t.tenant_id AND x.ticket_id=t.id) ORDER BY (p.priority IS NULL),p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id LIMIT 51 OFFSET ?",(g.tenant['id'],(page-1)*50)).fetchall()
-        return render_template('shop_queue.html',tickets=tickets[:50],has_more=len(tickets)>50,page=page)
+        stations=db().execute('SELECT id,name FROM stations WHERE tenant_id=? AND active=1 ORDER BY name',(g.tenant['id'],)).fetchall()
+        key='shop_station_'+str(g.tenant['id'])
+        selected=request.args.get('station',session.get(key,''))
+        if selected and selected not in {str(s['id']) for s in stations}:
+            if 'station' in request.args:abort(404,'Unknown station.')
+            selected=''
+        session[key]=selected
+        station_rows={}
+        if selected:
+            from .tv_boards import board_data
+            for row in board_data(db(),g.tenant['id'],int(selected)):
+                station_rows.setdefault(row['ticket_id'],[]).append(row)
+        tickets = db().execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND (t.state!='accepted' OR ?=1) AND NOT EXISTS(SELECT 1 FROM ticket_cancellations x WHERE x.tenant_id=t.tenant_id AND x.ticket_id=t.id) ORDER BY (p.priority IS NULL),p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(g.tenant['id'],bool(selected))).fetchall()
+        if selected:tickets=[t for t in tickets if t['id'] in station_rows]
+        tickets=tickets[(page-1)*50:page*50+1]
+        return render_template('shop_queue.html',tickets=tickets[:50],has_more=len(tickets)>50,page=page,stations=stations,selected_station=selected,station_rows=station_rows)
 
     @app.get('/shop-floor/scan')
     @roles_required('operator')
@@ -56,6 +70,11 @@ def register_shop_floor(app, db, roles_required):
     @roles_required('operator')
     def shop_work(code):
         data = context(code)
+        from .dispatch import assignment
+        from .outside_processing import step as outside_step
+        op=data['next_operation']
+        if data['can_complete'] and assignment(db(),g.tenant['id'],op['id']) and not outside_step(db(),g.tenant['id'],op['id']):
+            return redirect(url_for('station_work',code=code))
         page = page_number()
         units=[]
         if data['has_units']:

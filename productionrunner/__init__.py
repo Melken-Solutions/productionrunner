@@ -231,7 +231,7 @@ def create_app(config=None):
                                membership_epoch=identity['membership_epoch'], pin_version=identity['version'], csrf=secrets.token_hex(32))
                 session.permanent = True
                 member_roles = db().execute('SELECT roles FROM memberships WHERE tenant_id=? AND user_id=?', (identity['tenant_id'], identity['id'])).fetchone()[0].split(',')
-                return redirect(url_for('tv_boards' if 'display' in member_roles else 'index'))
+                return redirect(url_for('tv_boards' if 'display' in member_roles else 'shop_floor' if 'operator' in member_roles and not {'planner','admin'} & set(member_roles) else 'index'))
             error = 'Too many attempts. Try again in 15 minutes.' if status == 429 else 'Organization, username or credential is incorrect.'
             response = app.make_response((render_template('login.html', error=error), status))
             if status == 429:
