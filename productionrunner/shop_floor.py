@@ -50,10 +50,15 @@ def register_shop_floor(app, db, roles_required):
             selected=''
         session[key]=selected
         station_rows={}
+        station_travelers=[]
         if selected:
-            from .tv_boards import board_data
-            for row in board_data(db(),g.tenant['id'],int(selected)):
-                station_rows.setdefault(row['ticket_id'],[]).append(row)
+            from .station_queue import travelers
+            # Match the TV's read snapshot; never combine states from two writes.
+            with db():
+                db().execute('BEGIN')
+                station_travelers=travelers(db(),g.tenant['id'],int(selected))
+            groups=[('Working now',{'running','paused'}),('Ready at this station',{'ready','setup','inspection'}),('Upcoming — finish earlier steps first',{'upcoming'}),('Waiting / held',{'planning','held','blocked'})]
+            return render_template('station_queue.html',stations=stations,selected_station=selected,groups=groups,entries=station_travelers)
         tickets = db().execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND (t.state!='accepted' OR ?=1) AND NOT EXISTS(SELECT 1 FROM ticket_cancellations x WHERE x.tenant_id=t.tenant_id AND x.ticket_id=t.id) ORDER BY (p.priority IS NULL),p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(g.tenant['id'],bool(selected))).fetchall()
         if selected:tickets=[t for t in tickets if t['id'] in station_rows]
         tickets=tickets[(page-1)*50:page*50+1]
@@ -73,6 +78,14 @@ def register_shop_floor(app, db, roles_required):
         from .dispatch import assignment
         from .outside_processing import step as outside_step
         op=data['next_operation']
+        selected=session.get('shop_station_'+str(g.tenant['id']))
+        if selected and not data['has_units'] and not data['cancelled'] and data['target']['state']!='held':
+            from .station_queue import travelers
+            matches=[r for r in travelers(db(),g.tenant['id'],int(selected)) if r['code']==code]
+            available=next((r for r in matches if r['status'] in {'ready','running','paused','setup','inspection'}),None)
+            if not available:
+                assigned=assignment(db(),g.tenant['id'],op['id']) if op else None
+                return render_template('station_handoff.html',**data,next_station=assigned['station_id'] if assigned else None,message='Not ready at this station',detail=matches[0]['note'] if matches else 'Next station: '+assigned['station_name']+'. Keep the traveler with the material.' if assigned else 'Production is complete. Keep the traveler with the material for inspection, packing or shipping.')
         if data['can_complete'] and assignment(db(),g.tenant['id'],op['id']) and not outside_step(db(),g.tenant['id'],op['id']):
             return redirect(url_for('station_work',code=code))
         page = page_number()

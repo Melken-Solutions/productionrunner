@@ -7,6 +7,9 @@ from .outside_processing import step as outside_step, status as outside_status
 
 
 def board_data(conn,tenant_id,station_id=None):
+    if station_id is not None:
+        from .station_queue import travelers,board_rows
+        return board_rows(travelers(conn,tenant_id,station_id))
     tickets=conn.execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id) ORDER BY p.priority IS NULL,p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(tenant_id,)).fetchall()
     operations=defaultdict(list)
     for op in conn.execute('SELECT o.*,a.station_id,s.name AS station_name,u.username AS assigned_operator FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id LEFT JOIN users u ON u.id=a.operator_id WHERE o.tenant_id=? ORDER BY o.sequence',(tenant_id,)):
@@ -72,19 +75,6 @@ def board_data(conn,tenant_id,station_id=None):
                 stages['Departed']+=delivery['departed']
                 stages={name:count for name,count in stages.items() if count}
             output.append(dict(common,operation=' / '.join(f'{name}: {count}' for name,count in stages.items()),operator='',ready=ready,upcoming=0,held=held,inspection=inspection,planning=ticket['quantity']-accepted if not is_released else 0))
-        else:
-            for op in ops:
-                counts=per_op[op['id']]
-                if op['station_id']==station_id and any(counts.values()):
-                    output.append(dict(common,operation=f"{op['sequence']}. {op['name']}"+(' · First-piece approval required' if is_released and not first_piece_passed(conn,tenant_id,ticket['id'],op['id']) else ''),operator=op['assigned_operator'] or 'Shared / unassigned',**{k:counts[k] for k in ['ready','upcoming','held','inspection','planning']}))
-            if plan and is_released:
-                pending_checks=[r[0] for r in conn.execute('SELECT c.stage FROM fulfillment_checks c WHERE c.tenant_id=? AND c.ticket_id=? AND NOT EXISTS(SELECT 1 FROM fulfillment_check_results r WHERE r.tenant_id=c.tenant_id AND r.check_id=c.id)',(tenant_id,ticket['id']))]
-                for stage,label,amount in [('inspection','Independent inspection',inspection),('packing','Packing',delivery['available']),('shipping','Physical departure',delivery['waiting'])]:
-                    if plan['data'][stage]['station_id']!=station_id:continue
-                    hold=final_held if stage=='inspection' else 0
-                    if not amount and not hold:continue
-                    blocked=(stage=='packing' and 'pack' in pending_checks) or (stage=='shipping' and bool(pending_checks))
-                    output.append(dict(common,operation=label+(' · business checkpoints pending' if blocked else ''),operator='Authorized '+('inspector' if stage=='inspection' else 'operator / planner'),ready=amount if stage!='inspection' and not blocked else 0,upcoming=amount if blocked else 0,held=hold,inspection=amount if stage=='inspection' else 0,planning=0))
     return output
 
 

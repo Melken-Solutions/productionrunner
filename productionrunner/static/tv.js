@@ -5,20 +5,22 @@ function text(tag, content, cls) { const el = document.createElement(tag); el.te
 function drawRows(id, rows, size, held) {
   const parent=document.getElementById(id); parent.replaceChildren();
   const pages=Math.max(1,Math.ceil(rows.length/size)), current=page%pages;
-  document.getElementById(held?"hold-page":"work-page").textContent=`${rows.length} entries · ${current+1}/${pages}`;
+  document.getElementById(id==='upcoming'?'upcoming-page':held?"hold-page":"work-page").textContent=`${rows.length} entries · ${current+1}/${pages}`;
   if (!rows.length) parent.append(text("p",held?"No held work.":"No pending work in this view."));
   rows.slice(current*size,(current+1)*size).forEach(row=>{
     const card=text("article","",held?"tv-row held":"tv-row");
     card.append(text("h3",`${row.hot ? '▲ HOT '+row.hot+' · ' : ''}${row.pn} · Rev ${row.revision}`,row.hot?"hot":""));
     card.append(text("p",row.operation));
+    if(row.shipment&&!row.shipment.met)card.append(text('p',`Ship ${row.shipment.remaining} more by ${row.shipment.ship_date}`));else if(row.due)card.append(text('p',`Due ${row.due}`));
     if(row.operator)card.append(text("p",`Assigned: ${row.operator}`,"assigned"));
-    const counts=held?`${row.held} held`:Object.entries({Ready:row.ready,Upcoming:row.upcoming,Inspection:row.inspection,'Not released':row.planning}).filter(([,v])=>v>0).map(([k,v])=>`${k}: ${v}`).join(' · ');
+    const counts=held?`${row.held} held`:Object.entries(id==='upcoming'?{Upcoming:Math.max(0,row.upcoming-(row.setup||0)-(row.blocked||0)),Blocked:row.blocked,'Not released':row.planning}:{Ready:Math.max(0,row.ready-(row.running||0)-(row.paused||0)),Running:row.running,Paused:row.paused,Setup:row.setup,Inspection:row.inspection}).filter(([,v])=>v>0).map(([k,v])=>`${k}: ${v}`).join(' · ');
     card.append(text("p",counts,"counts"));card.append(text("small",`${row.ticket_id} · ${row.accepted}/${row.quantity} accepted`));parent.append(card);
   });
 }
 function render(){if(!snapshot)return;const rows=snapshot.rows;
   const size=Math.max(1,Math.min(4,Math.floor((window.innerHeight-310)/240)));
-  drawRows('work',rows.filter(r=>r.ready||r.upcoming||r.inspection||r.planning),size,false);
+  drawRows('work',rows.filter(r=>r.ready||r.inspection||r.setup),size,false);
+  drawRows('upcoming',rows.filter(r=>r.upcoming>(r.setup||0)||r.planning),size,false);
   drawRows('holds',rows.filter(r=>r.held),size,true);
   document.getElementById('summary').textContent=`${snapshot.organization} · ${snapshot.station}${snapshot.active?'':' · STATION INACTIVE'} · ${new Set(rows.map(r=>r.ticket_id)).size} jobs · Counts are units · Pages rotate every 12 seconds`;
 }

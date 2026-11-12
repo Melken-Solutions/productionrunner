@@ -9,7 +9,7 @@ def test_operator_lands_on_station_workspace_and_filter_persists(app):
     station=rows(app,'SELECT station_id FROM operation_assignments LIMIT 1')[0][0]
     response=c.get('/shop-floor?station='+str(station))
     assert response.status_code==200 and tid.encode() in response.data
-    assert b'Your station jobs' in c.get('/shop-floor').data
+    assert b'Ready at this station' in c.get('/shop-floor').data
     with c.session_transaction() as session:assert session['shop_station_1']==str(station)
     assert c.get('/shop-floor?station=99999').status_code==404
     assert c.get('/shop-floor/work/'+code).location=='/work/'+code
