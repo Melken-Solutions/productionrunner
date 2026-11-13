@@ -39,7 +39,7 @@ def register_shop_floor(app, db, roles_required):
                     can_complete=released(db(),g.tenant['id'],ticket['id']) and not cancelled and not has_units and target['state'] in {'ready','in_progress'} and next_op is not None)
 
     @app.get('/shop-floor')
-    @roles_required('operator')
+    @roles_required('operator','admin')
     def shop_floor():
         page = page_number()
         stations=db().execute('SELECT id,name FROM stations WHERE tenant_id=? AND active=1 ORDER BY name',(g.tenant['id'],)).fetchall()
@@ -65,14 +65,14 @@ def register_shop_floor(app, db, roles_required):
         return render_template('shop_queue.html',tickets=tickets[:50],has_more=len(tickets)>50,page=page,stations=stations,selected_station=selected,station_rows=station_rows)
 
     @app.get('/shop-floor/scan')
-    @roles_required('operator')
+    @roles_required('operator','admin')
     def shop_scan():
         code = request.args.get('code','').strip()
         context(code)
         return redirect(url_for('shop_work',code=code))
 
     @app.get('/shop-floor/work/<code>')
-    @roles_required('operator')
+    @roles_required('operator','admin')
     def shop_work(code):
         data = context(code)
         from .dispatch import assignment
@@ -92,6 +92,7 @@ def register_shop_floor(app, db, roles_required):
         units=[]
         if data['has_units']:
             units=db().execute('SELECT * FROM serial_units WHERE tenant_id=? AND ticket_id=? ORDER BY serial LIMIT 51 OFFSET ?',(g.tenant['id'],data['ticket']['id'],(page-1)*50)).fetchall()
+        if 'operator' not in g.roles:data['can_complete']=False
         return render_template('shop_work.html',**data,units=units[:50],page=page,has_more=len(units)>50)
 
     @app.get('/shop-floor/work/<code>/confirm')

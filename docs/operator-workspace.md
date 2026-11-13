@@ -36,3 +36,9 @@ On the station traveler choose **Ask planner / admin**, select the reason, and s
 Planners/admins can acknowledge, send a quick reply or note, and mark a conversation resolved. A new reply to a resolved conversation reopens it. The Messages unread count updates approximately every 15 seconds while the app is visible. Open the conversation to read the reply; refresh an already-open conversation to load new replies. Opening it marks the currently displayed messages read for that person. These are in-app alerts only: no email or background notification is sent when the app is closed. Never rely on messaging for emergency shutdown.
 
 Messages are independent of station timers and quality holds. The operator must use Pause, Stop or the existing hold process when production needs to stop. Messages and status changes retain the actual sender and time. Ordinary users cannot edit or erase individual messages.
+
+## Admin view switching
+
+Organization admins have a **Switch view** menu in the standard app header, Shop Floor header and full-screen TV board. It opens Organization Admin, Planning/requests, Production jobs, Shop Floor, TV boards, Packing/dispatch, Shipping, Parts/drawings, Messages and Station reports directly without signing out.
+
+Admin-only accounts can view station queues and open travelers in **Admin overview**. This is read-only for station production: starting, pausing, resuming and confirming work still require the Operator role. Admin accounts that also have Operator retain their normal production controls. The switcher does not change roles or organizations. Dedicated display-only accounts keep their restricted TV navigation.

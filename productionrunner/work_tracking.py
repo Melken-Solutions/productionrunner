@@ -127,8 +127,9 @@ def register_work_tracking(app,db,roles_required,now,event):
         return write
 
     @app.route('/work/<code>',methods=['GET','POST'])
-    @roles_required('operator')
+    @roles_required('operator','admin')
     def station_work(code):
+        if request.method=='POST' and 'operator' not in g.roles:abort(403,'An Operator role is required to record station work.')
         if request.method=='POST':
             with db():
                 db().execute('BEGIN IMMEDIATE');actor(db(),g.tenant['id'],g.user['id'],('operator',))

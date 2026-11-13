@@ -57,7 +57,7 @@ def test_cancel_after_confirmation_prevents_write(app):
     assert client.get('/shop-floor/scan?code='+code).status_code==302
 
 
-@pytest.mark.parametrize('role',['viewer','planner','inspector','admin'])
+@pytest.mark.parametrize('role',['viewer','planner','inspector'])
 def test_touch_views_require_operator(app,role):
     client,path=prepared(app);sign_in(client,role)
     for route in ['/shop-floor','/shop-floor/scan?code='+path.split('/')[-1],'/shop-floor/work/'+path.split('/')[-1],'/shop-floor/work/'+path.split('/')[-1]+'/confirm']:
