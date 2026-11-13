@@ -52,3 +52,11 @@ New unread messages show a visible notification banner with **Open messages** an
 ### Dedicated TV screen logins
 
 In Organization Admin → People & access, choose **Add TV screen**. Enter a unique screen login name (for example `laser-1-tv`), password and access reason. No person or email is required. Read-only display access is assigned automatically. Use those credentials with the organization on the TV, then choose its station board or whole-shop queue. Create a separate login for each screen so access can be revoked individually.
+
+## Primary station and moving between stations
+
+Admins assign an operator's primary station in **People & access → Manage → Primary station**. Only active stations in the current organization can be chosen. Save a reason; changes are audited and apply on the next sign-in without interrupting current work. Choose “No primary station” to let the operator choose at sign-in. TV accounts use their separate display workflow.
+
+On sign-in the operator's Shop Floor opens the primary station. **Change station** provides large touch buttons for any active station, marks the primary, and includes All stations. The choice lasts for this browser session; signing out and back in returns to the primary. Station choices are not stored in shared browser storage, so another operator does not inherit a previous operator's station. An inactive primary is ignored; an inactive current selection falls back to an active primary or the chooser.
+
+Switching changes the queue, not permissions, planner assignments or running work. Pause or stop work with the existing controls before moving if appropriate. Actual production attribution continues to come from guarded work sessions and completion records, not the user's primary station. Station-specific qualification restrictions are not introduced by this preference.

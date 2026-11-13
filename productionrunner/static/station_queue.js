@@ -1,10 +1,5 @@
 (() => {
   const root=document.querySelector('[data-station-queue]');if(!root)return;
-  const select=root.querySelector('[name=station]');const key='productionrunner.station.'+root.dataset.organization;
-  try{
-    if(new URL(location.href).searchParams.has('station')||select.value)localStorage.setItem(key,select.value);
-    else{const saved=localStorage.getItem(key);if(saved&&[...select.options].some(o=>o.value===saved)){const url=new URL(location.href);url.searchParams.set('station',saved);location.replace(url);return;}}
-  }catch{}
   const status=root.querySelector('[data-queue-freshness]');if(!status)return;
   let busy=false;
   async function refresh(){

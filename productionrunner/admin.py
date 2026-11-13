@@ -17,6 +17,14 @@ def deleted_member(conn, tenant_id, user_id):
                         (tenant_id, user_id)).fetchone() is not None
 
 
+def primary_station(conn, tenant_id, user_id):
+    row = conn.execute("SELECT detail FROM auth_events WHERE tenant_id=? AND user_id=? AND action='primary_station_changed' ORDER BY id DESC LIMIT 1",
+                       (tenant_id, user_id)).fetchone()
+    station_id = json.loads(row['detail']).get('station_id') if row else None
+    return conn.execute('SELECT id,name FROM stations WHERE tenant_id=? AND id=? AND active=1',
+                        (tenant_id, station_id)).fetchone() if station_id else None
+
+
 def epoch(conn, tenant_id, user_id):
     row = conn.execute('SELECT session_epoch FROM membership_controls WHERE tenant_id=? AND user_id=?',
                        (tenant_id, user_id)).fetchone()
@@ -169,7 +177,32 @@ def register_admin(app, db, roles_required):
     @app.get('/admin/users/<int:user_id>')
     @roles_required('admin')
     def admin_user(user_id):
-        return render_template('admin_user.html', member=member(user_id), roles=sorted(ROLES))
+        return render_template('admin_user.html', member=member(user_id), roles=sorted(ROLES),
+                               primary_station=primary_station(db(), g.tenant['id'], user_id),
+                               stations=db().execute('SELECT id,name FROM stations WHERE tenant_id=? AND active=1 ORDER BY name', (g.tenant['id'],)).fetchall())
+
+    @app.post('/admin/users/<int:user_id>/primary-station')
+    @roles_required('admin')
+    def admin_primary_station(user_id):
+        detail = reason()
+        selected = request.form.get('station_id', '')
+        with db():
+            target = lock_member(user_id)
+            if 'operator' not in target['roles'].split(','):
+                abort(409, 'Primary stations are for active operator accounts.')
+            station = None
+            if selected:
+                if not selected.isdecimal() or len(selected) > 18:
+                    abort(400, 'Choose an active station from the list.')
+                station = db().execute('SELECT id,name FROM stations WHERE tenant_id=? AND id=? AND active=1',
+                                       (g.tenant['id'], int(selected))).fetchone()
+                if not station:
+                    abort(400, 'Choose an active station from this organization.')
+            record(user_id, 'primary_station_changed', json.dumps(dict(
+                station_id=station['id'] if station else None,
+                station_name=station['name'] if station else None, reason=detail)))
+            bump(db(), g.tenant['id'], user_id)
+        return redirect(url_for('admin_user', user_id=user_id))
 
     @app.post('/admin/users/<int:user_id>/access')
     @roles_required('admin')
