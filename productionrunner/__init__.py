@@ -277,6 +277,8 @@ def create_app(config=None):
     @roles_required()
     def index():
         tickets = db().execute('SELECT t.*, p.priority AS hot_priority, p.hot_since FROM tickets t LEFT JOIN ticket_priorities p ON p.ticket_id=t.id AND p.tenant_id=t.tenant_id WHERE t.tenant_id=? ORDER BY EXISTS(SELECT 1 FROM ticket_cancellations x WHERE x.ticket_id=t.id AND x.tenant_id=t.tenant_id), (p.priority IS NULL), p.priority, p.hot_since, CASE WHEN p.priority IS NOT NULL THEN t.id END, t.created_at DESC, t.id', (g.tenant['id'],)).fetchall()
+        from .production_calendar import ordered
+        tickets=ordered(db(),g.tenant['id'],tickets)
         return render_template('index.html', tickets=tickets)
 
     @app.post('/tickets/<ticket_id>/priority')

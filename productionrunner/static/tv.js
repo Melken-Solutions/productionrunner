@@ -11,6 +11,7 @@ function drawRows(id, rows, size, held) {
     const card=text("article","",held?"tv-row held":"tv-row");
     card.append(text("h3",`${row.hot ? '▲ HOT '+row.hot+' · ' : ''}${row.pn} · Rev ${row.revision}`,row.hot?"hot":""));
     card.append(text("p",row.operation));
+    if(row.planned_day)card.append(text('p',`Scheduled start ${row.planned_day}`));
     if(row.shipment&&!row.shipment.met)card.append(text('p',`Ship ${row.shipment.remaining} more by ${row.shipment.ship_date}`));else if(row.due)card.append(text('p',`Due ${row.due}`));
     if(row.operator)card.append(text("p",`Assigned: ${row.operator}`,"assigned"));
     const counts=held?`${row.held} held`:Object.entries(id==='upcoming'?{Upcoming:Math.max(0,row.upcoming-(row.setup||0)-(row.blocked||0)),Blocked:row.blocked,'Not released':row.planning}:{Ready:Math.max(0,row.ready-(row.running||0)-(row.paused||0)),Running:row.running,Paused:row.paused,Setup:row.setup,Inspection:row.inspection}).filter(([,v])=>v>0).map(([k,v])=>`${k}: ${v}`).join(' · ');

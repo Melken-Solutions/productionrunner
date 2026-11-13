@@ -104,8 +104,10 @@ def register(app,db,roles_required,now):
         tenant=g.tenant['id']
         try:day=date.fromisoformat(request.args.get('day',datetime.now(timezone.utc).date().isoformat())).isoformat()
         except ValueError:abort(400,'Choose a valid planning date.')
-        groups={name:[] for name in ('Planned today','Due shipments','HOT jobs','Held work','Waiting on production checks','Requests needing preparation','Awaiting release','Outside returns','Ready to pack / ship')}
+        groups={name:[] for name in ('Planned today','Earlier scheduled work','Due shipments','HOT jobs','Held work','Waiting on production checks','Requests needing preparation','Awaiting release','Outside returns','Ready to pack / ship')}
         tickets=db().execute('SELECT t.*,p.priority AS hot_priority,r.required_date FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id LEFT JOIN intake_requests r ON r.tenant_id=t.tenant_id AND r.ticket_id=t.id WHERE t.tenant_id=? AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id) ORDER BY p.priority IS NULL,p.priority,t.created_at',(tenant,)).fetchall()
+        from .production_calendar import ordered
+        tickets=ordered(db(),tenant,tickets)
         for req in db().execute("SELECT * FROM intake_requests WHERE tenant_id=? AND status IN ('preparing','approved') ORDER BY created_at",(tenant,)):
             groups['Requests needing preparation'].append(dict(title=req['pn']+' · '+str(req['id']),detail='Approve documents and create the production ticket.' if req['status']=='preparing' else 'Approved — ready to create the production ticket.',url=url_for('intake_detail',rid=req['id'])))
         from .production_calendar import assignments
@@ -119,6 +121,8 @@ def register(app,db,roles_required,now):
             has_units=db().execute('SELECT 1 FROM serial_units WHERE tenant_id=? AND ticket_id=?',(tenant,ticket['id'])).fetchone()
             planned_quantity=sum(u['quantity'] for u in (travelers if has_units else [dict(id=None,quantity=d['remaining'])]) if planned.get((ticket['id'],u['id']),planned.get((ticket['id'],None),{})).get('day')==day)
             if planned_quantity:add('Planned today',f'{planned_quantity} units planned for today. Check readiness before starting.')
+            earlier=sum(u['quantity'] for u in (travelers if has_units else [dict(id=None,quantity=d['remaining'])]) if (planned.get((ticket['id'],u['id']),planned.get((ticket['id'],None),{})).get('day') or '9999-99-99')<day)
+            if earlier:add('Earlier scheduled work',f'{earlier} units from earlier planned starts remain unshipped. Review progress or reschedule.')
             target=target_for(db(),tenant,ticket);due=target['ship_date'] if target and not target['met'] else ticket['required_date']
             if due and due<=day:add('Due shipments',f"{'Overdue' if due<day else 'Due today'} · {due} · {target['remaining'] if target and not target['met'] else d['remaining']} still to ship",'delivery_detail')
             if ticket['hot_priority'] is not None:add('HOT jobs',f"HOT {ticket['hot_priority']} · {d['departed']} / {ticket['quantity']} shipped")

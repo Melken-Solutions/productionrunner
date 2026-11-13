@@ -11,6 +11,8 @@ from .work_tracking import open_sessions
 
 def travelers(conn, tenant, station):
     tickets=conn.execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id) ORDER BY p.priority IS NULL,p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(tenant,)).fetchall()
+    from .production_calendar import ordered
+    tickets=ordered(conn,tenant,tickets)
     operations=defaultdict(list)
     for op in conn.execute('SELECT o.*,a.station_id,s.name AS station_name,u.username AS assigned_operator FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id LEFT JOIN users u ON u.id=a.operator_id WHERE o.tenant_id=? ORDER BY o.sequence',(tenant,)):
         operations[op['ticket_id']].append(op)
@@ -24,6 +26,8 @@ def travelers(conn, tenant, station):
     for row in conn.execute('SELECT unit_id,kind FROM fulfillment_active_units WHERE tenant_id=?',(tenant,)):
         moves[row['unit_id']].add(row['kind'])
     sessions={(s['ticket_id'],s['unit_id'],s['operation_id']):s for s in open_sessions(conn,tenant)}
+    from .production_calendar import assignments
+    planned=assignments(conn,tenant)
     output=[]
     for ticket in tickets:
         delivery=progress(conn,tenant,ticket)
@@ -33,7 +37,7 @@ def travelers(conn, tenant, station):
         req=conn.execute('SELECT required_date FROM intake_requests WHERE tenant_id=? AND ticket_id=?',(tenant,ticket['id'])).fetchone()
         common=dict(ticket_id=ticket['id'],pn=ticket['pn'],revision=ticket['revision'],order_quantity=ticket['quantity'],hot=ticket['hot_priority'],accepted=delivery['accepted'],due=req['required_date'] if req else '',shipment=shipment)
         def add(unit, stage, label, status, amount, op=None, note=''):
-            output.append(dict(common,code=unit['id'] or ticket['id'],unit_id=unit['id'],traveler=unit.get('serial') or ticket['id'],quantity=amount,stage=stage,operation_id=op['id'] if op else None,operation=label,status=status,note=note,operator=op['assigned_operator'] or 'Shared / unassigned' if op else 'Authorized inspector' if stage=='inspection' else 'Operator / planner'))
+            output.append(dict(common,planned_day=planned.get((ticket['id'],unit['id']),planned.get((ticket['id'],None),{})).get('day'),code=unit['id'] or ticket['id'],unit_id=unit['id'],traveler=unit.get('serial') or ticket['id'],quantity=amount,stage=stage,operation_id=op['id'] if op else None,operation=label,status=status,note=note,operator=op['assigned_operator'] or 'Shared / unassigned' if op else 'Authorized inspector' if stage=='inspection' else 'Operator / planner'))
         for raw in units[ticket['id']] or [dict(id=None,state=ticket['state'],quantity=ticket['quantity'],scrapped=0)]:
             unit=dict(raw)
             if unit['scrapped'] or 'depart' in moves[unit['id']]:continue
@@ -68,7 +72,8 @@ def travelers(conn, tenant, station):
                     if count<=0 or plan['data'][stage]['station_id']!=station:continue
                     blocked=pending_checks(conn,tenant,ticket['id'],[uid] if uid else [],'pack' if stage=='packing' else 'depart')
                     add(unit,stage,label,'blocked' if blocked else 'ready',count,note='Business checkpoints pending' if blocked else 'Complete packaging, label and departure checks in the traveler')
-    return output
+    # Traveler-specific dates override the whole-job start. Stable sorting retains route order.
+    return sorted(output,key=lambda r:(r['hot'] is None,r['hot'] or 0,r['planned_day'] or '9999-99-99',r['due'] or '9999-99-99'))
 
 
 def board_rows(entries):
@@ -76,7 +81,7 @@ def board_rows(entries):
     for item in entries:
         key=(item['ticket_id'],item['stage'],item['operation_id'])
         if key not in grouped:
-            grouped[key]=dict(ticket_id=item['ticket_id'],pn=item['pn'],revision=item['revision'],quantity=item['order_quantity'],hot=item['hot'],accepted=item['accepted'],operation=item['operation'],operator=item['operator'],due=item['due'],shipment=item['shipment'],**dict.fromkeys(['ready','upcoming','held','inspection','planning','running','paused','setup','blocked'],0))
+            grouped[key]=dict(planned_day=item['planned_day'],ticket_id=item['ticket_id'],pn=item['pn'],revision=item['revision'],quantity=item['order_quantity'],hot=item['hot'],accepted=item['accepted'],operation=item['operation'],operator=item['operator'],due=item['due'],shipment=item['shipment'],**dict.fromkeys(['ready','upcoming','held','inspection','planning','running','paused','setup','blocked'],0))
         row=grouped[key];status=item['status'];amount=item['quantity']
         bucket='ready' if status in {'running','paused'} else 'upcoming' if status in {'setup','blocked'} else status
         row[bucket]+=amount

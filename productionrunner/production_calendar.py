@@ -2,7 +2,6 @@
 import json
 from datetime import date,timedelta
 from flask import g,request,abort,redirect,url_for,render_template
-from .intake import actor
 
 
 def assignments(conn,tenant):
@@ -12,7 +11,37 @@ def assignments(conn,tenant):
     return result
 
 
+def request_start(conn,tenant,rid):
+    row=conn.execute("SELECT detail FROM intake_events WHERE tenant_id=? AND request_id=? AND action='production_start_planned' ORDER BY id DESC LIMIT 1",(tenant,rid)).fetchone()
+    return json.loads(row['detail'])['day'] if row else ''
+
+
+def validate_start(day,deadline=''):
+    if day:
+        try:
+            if date.fromisoformat(day).isoformat()!=day:raise ValueError
+        except ValueError:abort(400,'Scheduled start must be a valid YYYY-MM-DD date.')
+        if deadline and day>deadline:abort(400,'Scheduled start must be on or before the required date.')
+    return day
+
+
+def save_request_start(conn,tenant,user,rid,day,stamp):
+    conn.execute("INSERT INTO intake_events(tenant_id,request_id,actor_id,action,detail,created_at) VALUES(?,?,?,'production_start_planned',?,?)",(tenant,rid,user,json.dumps(dict(day=day)),stamp))
+
+
+def ordered(conn,tenant,tickets):
+    """HOT rank, planned start, required date; preserve previous order for ties."""
+    saved=assignments(conn,tenant)
+    due={r['ticket_id']:r['required_date'] for r in conn.execute('SELECT ticket_id,required_date FROM intake_requests WHERE tenant_id=? AND ticket_id IS NOT NULL',(tenant,))}
+    cancelled={r['ticket_id'] for r in conn.execute('SELECT ticket_id FROM ticket_cancellations WHERE tenant_id=?',(tenant,))}
+    def key(t):
+        priority=t['hot_priority'];day=saved.get((t['id'],None),{}).get('day') or ''
+        return (t['id'] in cancelled,priority is None,priority or 0,day or '9999-99-99',due.get(t['id']) or '9999-99-99')
+    return sorted(tickets,key=key)
+
+
 def register(app,db,roles_required,lock_ticket,event):
+    from .intake import actor
     @app.context_processor
     def calendar_context():
         def planned_day(ticket,unit=None):
@@ -20,7 +49,7 @@ def register(app,db,roles_required,lock_ticket,event):
             saved=g.work_day_assignments
             row=saved.get((ticket['id'],unit),saved.get((ticket['id'],None)))
             return row.get('day') if row else None
-        return dict(planned_work_day=planned_day)
+        return dict(planned_work_day=planned_day,request_start_date=lambda rid:request_start(db(),g.tenant['id'],rid))
 
     @app.get('/calendar')
     @roles_required('planner','admin')

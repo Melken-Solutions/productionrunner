@@ -1,5 +1,5 @@
 """Tenant request intake and explicit production-document readiness approval."""
-from . import delivery_schedule, erp
+from . import delivery_schedule, erp, production_calendar
 import json
 import re
 import secrets
@@ -54,6 +54,9 @@ def log(conn, tenant, user, rid, action, detail, stamp):
 
 
 def link_ticket(conn, tenant, user, req, tid, stamp):
+    start=production_calendar.request_start(conn,tenant,req['id'])
+    if start:
+        conn.execute("INSERT INTO events(tenant_id,ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,'production_day_planned',?,?)",(tenant,tid,user,json.dumps(dict(unit_id=None,day=start,reason='Scheduled start from production request')),stamp))
     erp.snapshot(conn,tenant,user,req,tid,stamp)
     delivery_schedule.snapshot(conn,tenant,user,req,tid,stamp)
     custom_fields.snapshot(conn,tenant,req["id"],tid)
@@ -144,6 +147,8 @@ def register_intake(app, db, roles_required, now):
             existing=matching_part(db(),g.tenant['id'],data['pn'],data['revision'])
             if existing: active(db(),g.tenant['id'],existing['id'])
             db().execute('INSERT INTO intake_requests(id,tenant_id,' + ','.join(EDIT_FIELDS) + ',created_by,created_at) VALUES(' + ','.join('?' for _ in range(len(EDIT_FIELDS)+4)) + ')', (rid, g.tenant['id'], *(data[k] for k in EDIT_FIELDS), g.user['id'], now()))
+            start=production_calendar.validate_start(request.form.get('scheduled_start','').strip(),data['required_date'])
+            production_calendar.save_request_start(db(),g.tenant['id'],g.user['id'],rid,start,now())
             erp_data=erp.collect(request.form)
             erp.path_for(erp.settings(db(),g.tenant['id']),erp_data,data['source'])
             erp.save(db(),g.tenant['id'],g.user['id'],rid,erp_data,now())
@@ -192,6 +197,8 @@ def register_intake(app, db, roles_required, now):
                 from .catalog import active
                 existing=matching_part(db(),g.tenant['id'],data['pn'],data['revision'])
                 if existing: active(db(),g.tenant['id'],existing['id'])
+            previous_start=production_calendar.request_start(db(),g.tenant['id'],rid)
+            start=production_calendar.validate_start(request.form.get('scheduled_start',previous_start).strip(),data['required_date'])
             previous_erp=erp.saved(db(),g.tenant['id'],rid)
             erp_data=erp.collect(request.form,previous_erp)
             erp.path_for(erp.settings(db(),g.tenant['id']),erp_data,data['source'])
@@ -209,8 +216,9 @@ def register_intake(app, db, roles_required, now):
             custom=custom_fields.collect(db(),g.tenant['id'],request.form,previous_custom)
             uploaded = request_documents.save(db(),g.tenant['id'],g.user['id'],data,now())
             if uploaded: log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',uploaded,now())
-            if erp_data != previous_erp or schedule != previous_schedule or uploaded or previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
+            if start != previous_start or erp_data != previous_erp or schedule != previous_schedule or uploaded or previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
                 db().execute('UPDATE intake_requests SET ' + ','.join(key+'=?' for key in EDIT_FIELDS) + ",status='preparing',part_id=NULL,approved_by=NULL,approved_at=NULL,version=version+1 WHERE tenant_id=? AND id=?", (*(data[k] for k in EDIT_FIELDS), g.tenant['id'], rid))
+                production_calendar.save_request_start(db(),g.tenant['id'],g.user['id'],rid,start,now())
                 erp.save(db(),g.tenant['id'],g.user['id'],rid,erp_data,now())
                 save_request(db(),g.tenant['id'],rid,material)
                 save_outside(db(),g.tenant['id'],rid,outside)

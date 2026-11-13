@@ -11,6 +11,11 @@ def board_data(conn,tenant_id,station_id=None):
         from .station_queue import travelers,board_rows
         return board_rows(travelers(conn,tenant_id,station_id))
     tickets=conn.execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id) ORDER BY p.priority IS NULL,p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(tenant_id,)).fetchall()
+    from .production_calendar import ordered
+    tickets=ordered(conn,tenant_id,tickets)
+    from .production_calendar import assignments
+    planned=assignments(conn,tenant_id)
+    dates={r['ticket_id']:r['required_date'] for r in conn.execute('SELECT ticket_id,required_date FROM intake_requests WHERE tenant_id=? AND ticket_id IS NOT NULL',(tenant_id,))}
     operations=defaultdict(list)
     for op in conn.execute('SELECT o.*,a.station_id,s.name AS station_name,u.username AS assigned_operator FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id LEFT JOIN users u ON u.id=a.operator_id WHERE o.tenant_id=? ORDER BY o.sequence',(tenant_id,)):
         operations[op['ticket_id']].append(op)
@@ -67,7 +72,7 @@ def board_data(conn,tenant_id,station_id=None):
                     if op!=current: per_op[op['id']]['upcoming']+=amount
                 elif op==current: per_op[op['id']]['upcoming' if piece_pending else 'ready']+=amount
                 else: per_op[op['id']]['upcoming']+=amount
-        common=dict(ticket_id=ticket['id'],pn=ticket['pn'],revision=ticket['revision'],quantity=ticket['quantity'],hot=ticket['hot_priority'],accepted=accepted)
+        common=dict(planned_day=planned.get((ticket['id'],None),{}).get('day'),due=dates.get(ticket['id']),ticket_id=ticket['id'],pn=ticket['pn'],revision=ticket['revision'],quantity=ticket['quantity'],hot=ticket['hot_priority'],accepted=accepted)
         if station_id is None:
             if delivery['accepted']:
                 stages['Accepted / awaiting packing']+=delivery['available']
