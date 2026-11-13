@@ -8,11 +8,11 @@ ROLES=('operator','planner','admin')
 
 
 def threads(conn,tenant,user,roles,station=None):
-    sql="""SELECT t.*,j.pn,j.revision,s.name AS station_name,u.username AS creator,
+    sql="""SELECT t.*,j.pn,j.revision,s.name AS station_name,u.username AS creator,owner.username AS owner_name,
     (SELECT MAX(m.id) FROM job_messages m WHERE m.tenant_id=t.tenant_id AND m.thread_id=t.id) AS latest,
     COALESCE(r.last_message_id,0) AS seen
     FROM job_threads t JOIN tickets j ON j.tenant_id=t.tenant_id AND j.id=t.ticket_id
-    JOIN users u ON u.id=t.created_by LEFT JOIN stations s ON s.tenant_id=t.tenant_id AND s.id=t.station_id
+    JOIN users u ON u.id=t.created_by LEFT JOIN users owner ON owner.id=t.owner_id LEFT JOIN stations s ON s.tenant_id=t.tenant_id AND s.id=t.station_id
     LEFT JOIN job_message_reads r ON r.tenant_id=t.tenant_id AND r.thread_id=t.id AND r.user_id=?
     WHERE t.tenant_id=?"""
     args=[user,tenant]
@@ -80,13 +80,22 @@ def register(app,db,roles_required,now):
     def job_conversation(thread_id):
         with db():
             db().execute('BEGIN IMMEDIATE');actor(db(),g.tenant['id'],g.user['id'],ROLES)
-            thread=db().execute('SELECT t.*,s.name AS station_name,u.serial FROM job_threads t LEFT JOIN stations s ON s.tenant_id=t.tenant_id AND s.id=t.station_id LEFT JOIN serial_units u ON u.tenant_id=t.tenant_id AND u.id=t.unit_id WHERE t.tenant_id=? AND t.id=?',(g.tenant['id'],thread_id)).fetchone()
+            thread=db().execute('SELECT t.*,s.name AS station_name,u.serial,owner.username AS owner_name FROM job_threads t LEFT JOIN users owner ON owner.id=t.owner_id LEFT JOIN stations s ON s.tenant_id=t.tenant_id AND s.id=t.station_id LEFT JOIN serial_units u ON u.tenant_id=t.tenant_id AND u.id=t.unit_id WHERE t.tenant_id=? AND t.id=?',(g.tenant['id'],thread_id)).fetchone()
             if not thread:abort(404,'Conversation unavailable.')
             job=ticket(thread['ticket_id'])
             if request.method=='POST':
                 if request.form.get('version')!=str(thread['version']):abort(409,'New activity arrived. Reopen this conversation before responding.')
                 action=request.form.get('action');status=thread['status']
-                if action in {'acknowledge','resolve'}:
+                if action in {'claim','unclaim'}:
+                    if not {'admin','planner'} & set(g.roles):abort(403,'Only planners and admins can own requests.')
+                    if action=='claim' and thread['owner_id'] not in (None,g.user['id']):abort(409,'Someone is already handling this request.')
+                    if action=='unclaim' and thread['owner_id']!=g.user['id'] and 'admin' not in g.roles:abort(403,'Only the owner or an admin can release ownership.')
+                    if status=='resolved':abort(409,'This request is resolved.')
+                    owner=g.user['id'] if action=='claim' else None
+                    db().execute('UPDATE job_threads SET owner_id=? WHERE tenant_id=? AND id=?',(owner,g.tenant['id'],thread_id))
+                    body='I am handling this request.' if owner else 'Request returned to the unassigned queue.'
+                    status='acknowledged' if owner else 'new'
+                elif action in {'acknowledge','resolve'}:
                     if not {'admin','planner'} & set(g.roles):abort(403,'A planner or admin must acknowledge or resolve this request.')
                     status='acknowledged' if action=='acknowledge' else 'resolved'
                     body='Request acknowledged.' if action=='acknowledge' else 'Request marked resolved.'

@@ -25,6 +25,7 @@
   }
   async function load() {
     const token = ++generation;
+    document.getElementById('repeat-review').hidden=true;document.getElementById('repeat-hint').hidden=true;
     if (dirty && !window.confirm('Replace the current manufacturing plan and material with defaults for this part? Job-specific dates and vendor references will be cleared.')) {
       // Explicitly retain a one-off plan, but never attribute it to a different PN.
       const plan = JSON.parse(document.getElementById('request-plan-json').value);
@@ -52,6 +53,7 @@
       for (const key of ['vendor','service','instructions','inspection_requirements']) set('outside_'+key,t.outside?.[key]);
       outside.dispatchEvent(new Event('change',{bubbles:true}));
       status.textContent='Approved template revision '+t.revision+' loaded. Review the plan and enter job-specific details'+(t.outside?', including the outside return date.':'.');
+      document.getElementById('repeat-review').hidden=false;document.getElementById('repeat-hint').hidden=false;
       dirty=false;
     } catch (error) {
       if (token===generation) status.textContent=error.message || 'Could not load the template. Try selecting the part again.';

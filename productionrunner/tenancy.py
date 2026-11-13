@@ -56,6 +56,8 @@ def register_commands(app):
                 for name, kind in [('object_key','TEXT'), ('object_size','INTEGER')]:
                     if name not in names:
                         conn.execute('ALTER TABLE '+table+' ADD COLUMN '+name+' '+kind)
+            if 'owner_id' not in {r[1] for r in conn.execute('PRAGMA table_info(job_threads)')}:
+                conn.execute('ALTER TABLE job_threads ADD COLUMN owner_id INTEGER REFERENCES users(id)')
         click.echo('Database initialized (existing data preserved).')
 
     @app.cli.command('add-tenant')

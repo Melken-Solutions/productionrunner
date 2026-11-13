@@ -779,6 +779,7 @@ CREATE TRIGGER IF NOT EXISTS operation_templates_no_delete BEFORE DELETE ON oper
 -- Job-linked conversations and per-person read receipts.
 CREATE TABLE IF NOT EXISTS job_threads (
  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,unit_id TEXT,station_id INTEGER,
+ owner_id INTEGER REFERENCES users(id),
  category TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','acknowledged','resolved')),
  created_by INTEGER NOT NULL,created_at TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,
  UNIQUE(tenant_id,ticket_id,id),

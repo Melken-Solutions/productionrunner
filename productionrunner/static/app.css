@@ -20,3 +20,9 @@
 .snippet-preview{padding:16px;margin:12px 0;background:#edf5f6;border-left:4px solid #007477;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere}[data-snippet-note][hidden]{display:none}.snippet-composer select{width:100%;max-width:100%}.shop-floor .snippet-composer select{min-height:68px;font-size:21px}
 
 .message-arrival{position:fixed;z-index:1000;bottom:20px;right:20px;width:min(440px,calc(100vw - 40px));box-sizing:border-box;padding:20px;border:3px solid #007d85;border-radius:16px;background:#fff;color:#142e3b;box-shadow:0 8px 32px #102e3b40;display:flex;flex-wrap:wrap;gap:12px}.message-arrival[hidden]{display:none}.message-arrival p{flex-basis:100%;font-size:20px;font-weight:750;margin:0}.message-arrival a,.message-arrival button{min-height:56px;display:inline-flex;align-items:center;justify-content:center}
+
+.daily-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px}.daily-item{padding:14px 0;border-bottom:1px solid #dbe5e8}.daily-item p{margin:6px 0}.quantity-stage{display:grid;grid-template-columns:1fr auto;gap:10px;margin:20px 0}.quantity-stage progress{width:100%;grid-column:1/-1;height:18px;accent-color:var(--brand-primary,#007d85)}
+
+.work-status{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:12px 24px;background:#e8f3f3;font-size:14px;border-bottom:1px solid #b8d4d7}.work-status [data-save-state]{font-weight:700}
+
+.daily-grid>.card{margin:0;min-width:0}.daily-grid{margin:24px 0;align-items:start}

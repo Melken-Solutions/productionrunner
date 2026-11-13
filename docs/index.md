@@ -35,3 +35,5 @@ Shop users: open **Help** in the app for the request → production → inspecti
 Feature guides describe implemented behavior and explicit limitations. The architecture and original requirements notes contain historical design context; consult current feature guides when they describe later additions. Deployment runbooks still require environment-specific execution and verification.
 
 - [Permanent job deletion](job-deletion.md): scope, confirmation, linked-record restrictions and database behavior.
+
+- [Daily workspace, calendar and quantity progress](daily-workspace.md)

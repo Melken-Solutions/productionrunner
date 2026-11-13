@@ -18,6 +18,10 @@
     names.push('Inspection','Packing','Shipping');
     names.forEach((name, i) => { if (i) route.append(node('b','→')); route.append(node('span',name)); });
     review.replaceChildren();
+    const exceptions=['pn','revision','requester','destination','description'].filter(name=>!value(name));
+    if(exceptions.length)review.append(node('p','Complete this order: '+exceptions.join(', ')+'.','planner-warning'));
+    if(!value('required_date'))review.append(node('p','Delivery date is not set. Review the customer commitment.','planner-warning'));
+    if(data.template_id)review.append(node('p','Based on saved part plan. Review order-specific exceptions below.','planner-note'));
     function card(title, lines, target) {
       const box = node('section','','planner-review-item'); box.append(node('h3',title));
       lines.forEach(line => box.append(node('p',line)));

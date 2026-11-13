@@ -138,7 +138,7 @@ def create_app(config=None):
     @app.errorhandler(413)
     @app.errorhandler(409)
     def error_page(error):
-        return render_template('error.html', error=error), error.code
+        return render_template('error.html', error=error, action_feedback='Action not completed. Review the error below.' if request.method=='POST' else None), error.code
 
     def event(ticket_id, action, detail=''):
         result = db().execute('INSERT INTO events(tenant_id,ticket_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?,?)',
@@ -214,6 +214,10 @@ def create_app(config=None):
     register_message_snippets(app,db,roles_required,now)
     from .job_messages import register as register_job_messages
     register_job_messages(app,db,roles_required,now)
+    from .production_calendar import register as register_calendar
+    register_calendar(app,db,roles_required,lock_ticket,event)
+    from .daily_work import register as register_daily_work
+    register_daily_work(app,db,roles_required,now)
     from .job_deletion import register as register_job_deletion
     register_job_deletion(app,db,roles_required,now)
     from .production_controls import register_controls
