@@ -61,7 +61,7 @@ def test_identical_retry_and_first_dxf_do_not_change_existing_retention(app):
 @pytest.mark.parametrize('csv,files,reason', [
     ('PN-001,A,Test part,a.pdf,\n', [(b'%PDF-changed','a.pdf')], b'Drawing conflict'),
     ('PN-001,A,Changed,a.pdf,\n', [(PDF,'a.pdf')], b'description differs'),
-    ('NEW,A,,missing.pdf,\n', [(PDF,'missing.pdf.dxf')], b'not listed'),
+    ('NEW,A,,missing.pdf,\n', [(PDF,'missing.pdf.dxf')], b'Missing or wrong file type'),
     ('NEW,A,,,a.dxf\n', [(DXF,'a.dxf')], b'require a PDF'),
     ('NEW,A,,a.pdf,\nNEW,A,,a.pdf,\n', [(PDF,'a.pdf')], b'Duplicate PN'),
 ])
@@ -174,3 +174,49 @@ def test_revoked_uploader_cannot_confirm(app):
         conn.execute("UPDATE memberships SET roles='viewer' WHERE user_id=(SELECT id FROM users WHERE username='planner')")
     assert post(c,p.location,action='confirm').status_code == 403
     assert not rows(app,'SELECT * FROM part_revisions')
+
+
+def test_unmapped_files_are_excluded_in_preview(app):
+    c=client_for(app)
+    result=preview(c,files=[(PDF,'a.pdf'),(DXF,'a.dxf'),(PDF,'extra.pdf')])
+    assert result.status_code==302
+    assert b'1 selected files were not mapped' in c.get(result.location).data
+    assert post(c,result.location,action='confirm').status_code==302
+    assert len(rows(app,'SELECT * FROM part_revisions'))==1
+
+
+def test_recursive_folder_paths_and_duplicate_basenames(app):
+    c=client_for(app)
+    mapping=HEADER+'ONE,A,,doors/drawing.pdf,doors/cut.dxf\nTWO,A,,panels/drawing.pdf,\n'
+    result=post(c,'/parts/import',mapping=(BytesIO(mapping.encode()),'map.csv'),folder_files=[
+        (BytesIO(PDF),'Library/doors/drawing.pdf'),(BytesIO(DXF),'Library/doors/cut.dxf'),
+        (BytesIO(PDF),'Library/panels/drawing.pdf'),(BytesIO(b'notes'),'Library/readme.txt'),
+        (BytesIO(PDF),'Library/unused.pdf')])
+    assert result.status_code==302
+    page=c.get(result.location).data
+    assert b'Library/doors/drawing.pdf' in page and b'2 selected files were not mapped' in page
+    assert post(c,result.location,action='confirm').status_code==302
+    assert len(rows(app,'SELECT * FROM part_revisions'))==2
+    assert rows(app,'SELECT content FROM part_dxf')[0][0]==DXF
+
+
+def test_ambiguous_folder_names_block_and_safe_unique_basename_works(app):
+    c=client_for(app)
+    def send(names):
+        return post(c,'/parts/import',mapping=(BytesIO((HEADER+'NEW,A,,drawing.pdf,\n').encode()),'map.csv'),folder_files=[(BytesIO(PDF),name) for name in names])
+    result=send(['Root/one/drawing.pdf','Root/two/drawing.pdf'])
+    assert result.status_code==400 and b'Ambiguous filename' in result.data
+    assert b'Upload needs a correction' in result.data
+    assert not rows(app,'SELECT * FROM part_imports')
+    assert send(['Root/one/drawing.pdf']).status_code==302
+    for path in ['../drawing.pdf','/drawing.pdf','Root/../drawing.pdf','C:/drawing.pdf','Root\\drawing.pdf']:
+        rejected=send([path])
+        assert rejected.status_code in (400,200) and (b'Upload needs a correction' in rejected.data or b'Import blocked' in rejected.data)
+
+
+def test_csv_header_order_and_whitespace(app):
+    c=client_for(app)
+    mapping=b' revision ,pn, dxf_file,description,drawing_file\nA,NEW,,,a.pdf\n'
+    result=post(c,'/parts/import',mapping=(BytesIO(mapping),'map.csv'),files=[(BytesIO(PDF),'a.pdf')])
+    assert result.status_code==302
+    assert post(c,result.location,action='confirm').status_code==302

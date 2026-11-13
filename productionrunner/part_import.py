@@ -7,6 +7,8 @@ import json
 import re
 import secrets
 
+from werkzeug.exceptions import HTTPException
+
 from flask import abort, g, redirect, render_template, request, session, url_for, Response
 from .admin import epoch
 from .parts import MAX_PDF, MAX_DXF
@@ -26,7 +28,8 @@ def read_batch():
         abort(413, 'CSV must be 256 KB or smaller.')
     try:
         reader = csv.DictReader(io.StringIO(raw.decode('utf-8-sig')), strict=True)
-        if reader.fieldnames != COLUMNS:
+        reader.fieldnames = [name.strip().lower() for name in (reader.fieldnames or [])]
+        if len(reader.fieldnames) != len(COLUMNS) or set(reader.fieldnames) != set(COLUMNS):
             abort(400, 'CSV headers must be: ' + ','.join(COLUMNS))
         rows = []
         for row in reader:
@@ -39,28 +42,64 @@ def read_batch():
         abort(400, 'Use a valid UTF-8 CSV file.')
     if not rows:
         abort(400, 'CSV must contain at least one part.')
+    def safe_path(name):
+        if (not name or len(name) > 1024 or name.startswith('/') or '\\' in name
+                or any(part in {'', '.', '..'} or len(part)>255 for part in name.split('/'))
+                or any(ord(c) < 32 for c in name) or ':' in name):
+            abort(400, 'Use safe relative file paths; absolute paths and parent-directory paths are not allowed.')
+        return name
+
+    uploads = {}
+    ignored = 0
+    excluded = []
+    for field in ('files', 'folder_files'):
+        for upload in request.files.getlist(field):
+            name = upload.filename
+            if not name:
+                continue
+            name = safe_path(name)
+            kind = name.rsplit('.', 1)[-1].lower()
+            if kind not in {'pdf', 'dxf'}:
+                if field == 'folder_files':
+                    ignored += 1
+                    excluded.append(name)
+                    continue
+                abort(400, 'Only PDF and DXF files are supported.')
+            if name in uploads:
+                abort(400, 'Duplicate uploaded path: ' + name + '. Select it only once.')
+            if len(uploads) >= 400:
+                abort(400, 'Select at most 400 PDF/DXF files per batch. Split larger folders into smaller batches.')
+            uploads[name] = (upload, kind, field)
+
+    # Resolve full relative paths, paths below the selected folder, or unique basenames.
+    # Ambiguous names must never silently select a drawing from the wrong subfolder.
+    resolved = set()
+    for row in rows:
+        for field in ('drawing_file', 'dxf_file'):
+            name = row[field]
+            if not name:
+                continue
+            safe_path(name)
+            matches = [name] if name in uploads else [path for path in uploads if path.endswith('/' + name)]
+            if len(matches) > 1:
+                abort(400, 'Ambiguous filename: ' + name + '. Use its relative folder path in the CSV: ' + ', '.join(matches[:5]))
+            if matches:
+                row[field] = matches[0]
+                resolved.add(matches[0])
+    excluded.extend(sorted(set(uploads) - resolved))
+    ignored += len(set(uploads) - resolved)
     files, total = {}, 0
-    for upload in request.files.getlist('files'):
-        name = upload.filename
-        if not name:
-            continue
-        if name in files or '/' in name or '\\' in name or len(name) > 255:
-            abort(400, 'Use unique filenames without directory paths (up to 255 characters).')
-        kind = name.rsplit('.', 1)[-1].lower()
-        if kind not in {'pdf', 'dxf'}:
-            abort(400, 'Only PDF and DXF files are supported.')
+    for name in sorted(resolved):
+        upload, kind, _ = uploads[name]
         limit = MAX_PDF if kind == 'pdf' else MAX_DXF
         data = upload.read(limit + 1)
         total += len(data)
         if len(data) > limit or total > MAX_TOTAL:
             abort(413, 'Limits: PDF 10 MB, DXF 20 MB, total file content 50 MB.')
         if not data or (kind == 'pdf' and not data.startswith(b'%PDF-')):
-            abort(400, 'Files must be nonempty; PDF files must have a PDF header.')
+            abort(400, 'Files must be nonempty; PDF files must have a PDF header: ' + name)
         files[name] = dict(kind=kind, sha=hashlib.sha256(data).hexdigest(), data=base64.b64encode(data).decode('ascii'))
-    used = {row[key] for row in rows for key in ('drawing_file', 'dxf_file') if row[key]}
-    if set(files) - used:
-        abort(400, 'Some uploaded files are not listed in the CSV. Remove them or add their mapping.')
-    return dict(rows=rows, files=files, keep=request.form.get('keep') == '1')
+    return dict(rows=rows, files=files, keep=request.form.get('keep') == '1', ignored=ignored, excluded=excluded)
 
 
 def review(conn, tenant, batch):
@@ -128,13 +167,18 @@ def register_import(app, db, roles_required, now):
     def import_parts():
         if request.method == 'GET':
             return render_template('part_import.html')
-        batch = read_batch()
+        try:
+            batch = read_batch()
+        except HTTPException as error:
+            if error.code not in {400, 413}:
+                raise
+            return render_template('part_import.html', upload_error=error.description), error.code
         with db():
             db().execute('BEGIN IMMEDIATE')
             actor()
             report = review(db(), g.tenant['id'], batch)
             if any(row['errors'] for row in report):
-                return render_template('part_import.html', report=report, blocked=True)
+                return render_template('part_import.html', report=report, blocked=True, ignored=batch.get('ignored', 0), excluded=batch.get('excluded', []))
             token = secrets.token_hex(24)
             # One pending batch per person/organization bounds retained upload bytes.
             db().execute('DELETE FROM part_imports WHERE tenant_id=? AND (expires_at<=? OR (actor_id=? AND payload IS NOT NULL))', (g.tenant['id'], app.config['AUTH_CLOCK'](), g.user['id']))
@@ -146,7 +190,7 @@ def register_import(app, db, roles_required, now):
     def import_preview(token):
         if request.method == 'GET':
             stage = owned(token)
-            return render_template('part_import.html', report=json.loads(stage['report']), token=token, result=json.loads(stage['result']) if stage['result'] else None, keep=json.loads(stage['payload'])['keep'] if stage['payload'] else False)
+            return render_template('part_import.html', report=json.loads(stage['report']), token=token, result=json.loads(stage['result']) if stage['result'] else None, keep=json.loads(stage['payload'])['keep'] if stage['payload'] else False, ignored=json.loads(stage['payload']).get('ignored',0) if stage['payload'] else 0, excluded=json.loads(stage['payload']).get('excluded',[]) if stage['payload'] else [])
         # Upload outside the write lock, then recheck the preview and actor under lock.
         staged_files = {}
         if request.form.get('action') == 'confirm':
