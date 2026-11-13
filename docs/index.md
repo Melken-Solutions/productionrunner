@@ -37,3 +37,5 @@ Feature guides describe implemented behavior and explicit limitations. The archi
 - [Permanent job deletion](job-deletion.md): scope, confirmation, linked-record restrictions and database behavior.
 
 - [Daily workspace, calendar and quantity progress](daily-workspace.md)
+
+- [ERP configuration, demand references and clearance](erp-demand.md)

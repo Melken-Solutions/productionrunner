@@ -62,6 +62,9 @@ def readiness(conn,tenant,ticket):
         except HTTPException as e:add(label,False,e.description,endpoint)
     req=conn.execute('SELECT required_date FROM intake_requests WHERE tenant_id=? AND ticket_id=?',(tenant,tid)).fetchone()
     add('Delivery date',req and req['required_date'],'Review the delivery target and staged shipment dates.','delivery_detail',True)
+    from .erp import require_release
+    try:require_release(conn,tenant,ticket);add('ERP references and clearance',True,'Verified or not required by organization policy.','erp_review')
+    except HTTPException as e:add('ERP references and clearance',False,e.description,'erp_review')
     return checks
 
 

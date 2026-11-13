@@ -214,6 +214,8 @@ def create_app(config=None):
     register_message_snippets(app,db,roles_required,now)
     from .job_messages import register as register_job_messages
     register_job_messages(app,db,roles_required,now)
+    from .erp import register as register_erp
+    register_erp(app,db,roles_required,now,lock_ticket,event)
     from .production_calendar import register as register_calendar
     register_calendar(app,db,roles_required,lock_ticket,event)
     from .daily_work import register as register_daily_work

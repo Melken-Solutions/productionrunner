@@ -168,9 +168,12 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
                 inactive=db().execute('SELECT 1 FROM operation_assignments a JOIN stations s ON s.id=a.station_id AND s.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.ticket_id=? AND s.active=0',(g.tenant['id'],ticket_id)).fetchone()
                 if inactive or request.form.get('allow_unassigned')!='yes':abort(409,'Assign active stations or confirm that unassigned internal work may be picked up at a station.')
                 event(ticket_id,'unassigned_station_pickup_authorized','Planner authorized active stations to pick up unassigned internal work.')
+            from .erp import require_release,release_snapshot
+            require_release(db(),g.tenant['id'],ticket)
             from .job_plan import release_check
             release_check(db(),g.tenant['id'],ticket,event)
             db().execute('UPDATE ticket_dispatch SET released=1 WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id))
             db().execute('UPDATE tickets SET version=version+1 WHERE tenant_id=? AND id=?',(g.tenant['id'],ticket_id))
+            release_snapshot(db(),g.tenant['id'],ticket,event,now())
             event(ticket_id,'ticket_released',why)
         return redirect(url_for('ticket_detail',ticket_id=ticket_id))

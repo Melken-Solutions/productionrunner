@@ -1,6 +1,6 @@
 # Remote shipping-label handoff
 
-Production purpose, source system and shipping method are separate settings. Admin → Shipping setup defines source defaults and approved ship-to destinations. `erp` represents ERP/SAP requests. Melken Pilot defaults are ERP → make to stock / LTL / planner labels, and Smartsheet → make to order / FedEx / planner labels. Other organizations define their own rules; no customer names or shipping assumptions are hard-coded into workflow logic.
+Production purpose, source system and shipping method are separate settings. Admin → Shipping setup defines source defaults and approved ship-to destinations. `erp` represents ERP/SAP requests. Earlier pilot defaults associated ERP with stock/LTL and Smartsheet with order/FedEx. Those are historical configurable defaults, not a definition of demand: SAP is authoritative in the test organization and Smartsheet supplements it with urgent needs. Review configured shipping defaults independently of ERP request paths; origin alone does not establish demand type or carrier. Other organizations define their own rules.
 
 ## Delivery schedule versus shipping handoff
 

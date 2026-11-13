@@ -278,11 +278,15 @@ def register_work_tracking(app,db,roles_required,now,event):
             if request.args.get('station') and str(e['station_id'])!=request.args['station']:continue
             if request.args.get('operator') and str(e['actor_id'])!=request.args['operator']:continue
             stop_totals[e['reason']]=stop_totals.get(e['reason'],0)+1
+        from .erp import job_details
+        erp_refs={tid:job_details(db(),g.tenant['id'],tid) for tid in {r['ticket_id'] for r in selected}}
+        for row in selected:
+            row['erp_order']=(erp_refs[row['ticket_id']] or {}).get('values',{}).get('production_order','')
         if request.args.get('format')=='csv':
-            stream=io.StringIO();w=csv.writer(stream);w.writerow(['Session','Ticket','Unit','Station','Operation','Actor','Category','Reason','Start UTC','End UTC','Minutes','HOT at start','Live interval'])
+            stream=io.StringIO();w=csv.writer(stream);w.writerow(['Session','Ticket','Unit','Station','Operation','Actor','Category','Reason','Start UTC','End UTC','Minutes','HOT at start','Live interval','ERP production order'])
             def safe(v):
                 v=str(v if v is not None else '')
                 return "'"+v if v.lstrip().startswith(('=','+','-','@')) else v
-            for r in selected:w.writerow([safe(v) for v in (r['id'],r['ticket_id'],r['unit_id'],r['station_name'],r['operation_name'],r['username'],r['category'],r['reason'],r['start'].isoformat(),r['end'].isoformat(),round(r['seconds']/60,3),r['hot_priority'],r['open'])])
+            for r in selected:w.writerow([safe(v) for v in (r['id'],r['ticket_id'],r['unit_id'],r['station_name'],r['operation_name'],r['username'],r['category'],r['reason'],r['start'].isoformat(),r['end'].isoformat(),round(r['seconds']/60,3),r['hot_priority'],r['open'],r['erp_order'])])
             return Response(stream.getvalue(),mimetype='text/csv',headers={'Content-Disposition':'attachment; filename=station-work.csv'})
         return render_template('work_report.html',rows=selected,totals=totals,reason_totals=reasons_summary,station_totals=station_totals,stop_totals=stop_totals,start=start.date(),end=(end-timedelta(days=1)).date(),stations=db().execute('SELECT id,name FROM stations WHERE tenant_id=? ORDER BY name',(g.tenant['id'],)).fetchall(),operators=db().execute('SELECT u.id,u.username FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=? ORDER BY u.username',(g.tenant['id'],)).fetchall())

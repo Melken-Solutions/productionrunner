@@ -1,5 +1,5 @@
 """Tenant request intake and explicit production-document readiness approval."""
-from . import delivery_schedule
+from . import delivery_schedule, erp
 import json
 import re
 import secrets
@@ -41,6 +41,7 @@ def approved_request(conn, tenant, rid, version=None):
     delivery_schedule.validate_request(conn, tenant, row)
     request_plan.validate(conn, tenant, rid)
     custom_fields.validate(conn, tenant, rid)
+    erp.validate(conn,tenant,row)
     approval = conn.execute("SELECT detail FROM intake_events WHERE tenant_id=? AND request_id=? AND action='documents_approved' ORDER BY id DESC LIMIT 1", (tenant, rid)).fetchone()
     dxf = conn.execute('SELECT sha256 FROM part_dxf WHERE tenant_id=? AND part_revision_id=?', (tenant, row['part_id'])).fetchone()
     if not approval or json.loads(approval['detail']).get('dxf_sha256') != (dxf['sha256'] if dxf else None):
@@ -53,6 +54,7 @@ def log(conn, tenant, user, rid, action, detail, stamp):
 
 
 def link_ticket(conn, tenant, user, req, tid, stamp):
+    erp.snapshot(conn,tenant,user,req,tid,stamp)
     delivery_schedule.snapshot(conn,tenant,user,req,tid,stamp)
     custom_fields.snapshot(conn,tenant,req["id"],tid)
     conn.execute("UPDATE intake_requests SET status='ticketed',ticket_id=?,version=version+1 WHERE tenant_id=? AND id=?", (tid, tenant, req['id']))
@@ -82,8 +84,9 @@ def register_intake(app, db, roles_required, now):
         data = {key: request.form.get(key, '').strip() for key in EDIT_FIELDS}
         if data['item_type'] not in {'standard', 'custom'} or data['source'] not in SOURCES:
             abort(400, 'Choose standard/custom and a request source.')
+        erp_origin=data['source'] in erp.settings(db(),g.tenant['id'])['required_sources'] or bool(request.form.get('erp_path'))
         for key, limit in [('source_reference', 500), ('requester', 200), ('destination', 500), ('description', 4000)]:
-            if len(data[key]) > limit or (not data[key] and (key != 'source_reference' or data['source'] != 'manual')):
+            if len(data[key]) > limit or (not data[key] and (key != 'source_reference' or data['source'] != 'manual' and not erp_origin)):
                 abort(400, f'Provide {key} (up to {limit} characters).')
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', data['pn']) or not data['revision'] or len(data['revision']) > 40:
             abort(400, 'Provide one valid PN and a revision of up to 40 characters.')
@@ -137,6 +140,9 @@ def register_intake(app, db, roles_required, now):
             existing=matching_part(db(),g.tenant['id'],data['pn'],data['revision'])
             if existing: active(db(),g.tenant['id'],existing['id'])
             db().execute('INSERT INTO intake_requests(id,tenant_id,' + ','.join(EDIT_FIELDS) + ',created_by,created_at) VALUES(' + ','.join('?' for _ in range(len(EDIT_FIELDS)+4)) + ')', (rid, g.tenant['id'], *(data[k] for k in EDIT_FIELDS), g.user['id'], now()))
+            erp_data=erp.collect(request.form)
+            erp.path_for(erp.settings(db(),g.tenant['id']),erp_data,data['source'])
+            erp.save(db(),g.tenant['id'],g.user['id'],rid,erp_data,now())
             from .materials import select_material,save_request
             material=select_material(db(),g.tenant['id'],request.form)
             save_request(db(),g.tenant['id'],rid,material)
@@ -157,7 +163,7 @@ def register_intake(app, db, roles_required, now):
         row = get_request(db(), g.tenant['id'], rid)
         docs = document_state(db(), g.tenant['id'], row)
         history = db().execute('SELECT e.*,u.username FROM intake_events e JOIN users u ON u.id=e.actor_id WHERE e.tenant_id=? AND e.request_id=? ORDER BY e.id', (g.tenant['id'], rid)).fetchall()
-        return render_template('intake_detail.html', entry=row, docs=docs, history=history)
+        return render_template('intake_detail.html', entry=row, docs=docs, history=history,erp_duplicates=erp.duplicates(db(),g.tenant['id'],erp.saved(db(),g.tenant['id'],rid)['values'],rid))
 
     @app.route('/requests/<rid>/edit', methods=['GET', 'POST'])
     @roles_required('planner', 'admin')
@@ -180,6 +186,9 @@ def register_intake(app, db, roles_required, now):
                 from .catalog import active
                 existing=matching_part(db(),g.tenant['id'],data['pn'],data['revision'])
                 if existing: active(db(),g.tenant['id'],existing['id'])
+            previous_erp=erp.saved(db(),g.tenant['id'],rid)
+            erp_data=erp.collect(request.form,previous_erp)
+            erp.path_for(erp.settings(db(),g.tenant['id']),erp_data,data['source'])
             previous_schedule=delivery_schedule.request_schedule(db(),g.tenant['id'],rid)
             schedule=delivery_schedule.parse(request.form,data['quantity'],data['required_date'],previous_schedule)
             before = {key: row[key] for key in EDIT_FIELDS}
@@ -194,8 +203,9 @@ def register_intake(app, db, roles_required, now):
             custom=custom_fields.collect(db(),g.tenant['id'],request.form,previous_custom)
             uploaded = request_documents.save(db(),g.tenant['id'],g.user['id'],data,now())
             if uploaded: log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',uploaded,now())
-            if schedule != previous_schedule or uploaded or previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
+            if erp_data != previous_erp or schedule != previous_schedule or uploaded or previous_custom != custom or previous_plan != plan or before != data or previous_outside != outside or previous_material != material:
                 db().execute('UPDATE intake_requests SET ' + ','.join(key+'=?' for key in EDIT_FIELDS) + ",status='preparing',part_id=NULL,approved_by=NULL,approved_at=NULL,version=version+1 WHERE tenant_id=? AND id=?", (*(data[k] for k in EDIT_FIELDS), g.tenant['id'], rid))
+                erp.save(db(),g.tenant['id'],g.user['id'],rid,erp_data,now())
                 save_request(db(),g.tenant['id'],rid,material)
                 save_outside(db(),g.tenant['id'],rid,outside)
                 request_plan.save(db(),g.tenant['id'],rid,plan)
@@ -240,6 +250,7 @@ def register_intake(app, db, roles_required, now):
                 request_plan.validate(db(),g.tenant['id'],rid)
                 custom_fields.validate(db(),g.tenant['id'],rid)
                 delivery_schedule.validate_request(db(),g.tenant['id'],row)
+                erp.validate(db(),g.tenant['id'],row)
                 docs = document_state(db(), g.tenant['id'], row)
                 if not docs['ready']:
                     abort(409, 'Upload the required matching production documents before approval.')
