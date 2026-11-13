@@ -19,7 +19,7 @@ def change(client, user=4, version=0, **data):
 
 def test_create_and_manage_user(app):
     client = admin_client(app)
-    assert b'User management' in client.get('/admin/users').data
+    assert b'People &amp; access' in client.get('/admin/users').data
     result = post(client, '/admin/users', username='new-worker', password='new-test-password',
                   password_confirm='new-test-password', roles=['operator'], reason='New hire')
     assert result.status_code == 302
@@ -126,3 +126,23 @@ def test_cli_cannot_remove_last_admin_and_invalidates_sessions(app):
     assert runner.invoke(args=['set-membership', 'viewer', '--tenant', 'alpha', '--revoke']).exit_code == 0
     assert runner.invoke(args=['set-membership', 'viewer', '--tenant', 'alpha', '--roles', 'viewer']).exit_code == 0
     assert client.get('/').location == '/login'
+
+
+def test_dedicated_tv_screen_creation(app):
+    client = admin_client(app)
+    assert b'Add TV screen' in client.get('/admin/users').data
+    data = dict(account_type='tv', username='laser-1-tv', password='screen-password-123', password_confirm='screen-password-123', reason='New display')
+    assert post(client, '/admin/users', **dict(data, roles=['admin'])).status_code == 400
+    result = post(client, '/admin/users', **data)
+    assert result.status_code == 302
+    assert b'TV screen login' in client.get(result.location).data
+    user = rows(app, "SELECT u.id,m.roles FROM users u JOIN memberships m ON m.user_id=u.id WHERE username='laser-1-tv'")[0]
+    assert user['roles'] == 'display'
+    tv = app.test_client()
+    tv.get('/login')
+    login = post(tv, '/login', tenant='alpha', username='laser-1-tv', password='screen-password-123', method='password')
+    assert login.status_code == 302
+    assert tv.get('/tv/board').status_code == 200
+    assert tv.get('/admin/users').status_code == 403
+    assert tv.get('/requests/new').status_code == 403
+    assert post(client, '/admin/users', **data).status_code == 409

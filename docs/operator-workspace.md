@@ -48,3 +48,7 @@ Admin-only accounts can view station queues and open travelers in **Admin overvi
 Organization Admin → **Message snippets** lets admins add, edit or disable organization-specific messages for new requests, replies or both. Built-in messages remain available. Operators select from the catalog and review the full text before sending. Editing a snippet never changes a message already sent; an open form with old wording must be reloaded before that snippet can be sent. Changes are audited.
 
 New unread messages show a visible notification banner with **Open messages** and **Dismiss**. Dismiss hides the banner without marking messages read; another incoming message shows it again. The unread badge remains until conversations are opened. Notifications check every 15 seconds while the app is visible and immediately when returning to the app. They do not require browser notification permission or interrupt the work form.
+
+### Dedicated TV screen logins
+
+In Organization Admin → People & access, choose **Add TV screen**. Enter a unique screen login name (for example `laser-1-tv`), password and access reason. No person or email is required. Read-only display access is assigned automatically. Use those credentials with the organization on the TV, then choose its station board or whole-shop queue. Create a separate login for each screen so access can be revoked individually.

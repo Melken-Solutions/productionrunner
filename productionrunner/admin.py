@@ -128,7 +128,16 @@ def register_admin(app, db, roles_required):
     def admin_create_user():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        assigned, detail = selected_roles(), reason()
+        account_type = request.form.get('account_type', 'person')
+        if account_type not in {'person', 'tv'}:
+            abort(400, 'Choose a person or TV screen account.')
+        if account_type == 'tv':
+            if set(request.form.getlist('roles')) - {'display'}:
+                abort(400, 'TV screen accounts can only have display access.')
+            assigned = 'display'
+        else:
+            assigned = selected_roles()
+        detail = reason()
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._@-]{0,79}', username):
             abort(400, 'Use a username of 1–80 letters, digits, dots, underscores, @ or hyphens.')
         if not 12 <= len(password) <= 256 or password != request.form.get('password_confirm'):
