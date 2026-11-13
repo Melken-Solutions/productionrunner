@@ -49,7 +49,9 @@ def register(app,db,roles_required,now):
 
     @app.get('/messages/unread')
     @roles_required(*ROLES)
-    def job_unread():return jsonify(count=unread_count())
+    def job_unread():
+        unread=[row for row in inbox() if row['latest'] and row['latest']>row['seen']]
+        return jsonify(count=len(unread),latest=max((row['latest'] for row in unread),default=0))
 
     @app.route('/tickets/<ticket_id>/messages/new',methods=['GET','POST'])
     @roles_required(*ROLES)

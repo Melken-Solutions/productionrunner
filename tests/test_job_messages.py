@@ -10,8 +10,9 @@ def test_operator_request_planner_reply_and_alerts(app):
  assert c.get('/messages/unread').json['count']==0
  planner=app.test_client();sign_in(planner,'planner')
  assert planner.get('/messages/unread').json['count']==1
+ assert planner.get('/messages/unread').json['latest']==rows(app,'SELECT MAX(id) FROM job_messages')[0][0]
  page=planner.get(thread);assert b'Drawing question' in page.data
- assert planner.get('/messages/unread').json['count']==0
+ assert planner.get('/messages/unread').json==dict(count=0,latest=0)
  assert post(planner,thread,version='1',action='reply',quick_reply='Checking now',note='').status_code==302
  assert c.get('/messages/unread').json['count']==1
  page=c.get(thread);assert b'Checking now' in page.data and b'data-message-alert' in page.data
