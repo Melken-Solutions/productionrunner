@@ -97,8 +97,10 @@ def register(app,db,roles_required,now):
     def context():return dict(release_readiness=lambda t:readiness(db(),g.tenant['id'],t))
 
     @app.get('/today')
-    @roles_required('planner','admin')
+    @roles_required('planner','admin','operator')
     def today():
+        if 'operator' in g.roles and not {'planner', 'admin'} & set(g.roles):
+            return app.view_functions['shop_floor'](today_view=True)
         tenant=g.tenant['id']
         try:day=date.fromisoformat(request.args.get('day',datetime.now(timezone.utc).date().isoformat())).isoformat()
         except ValueError:abort(400,'Choose a valid planning date.')

@@ -17,7 +17,7 @@ def test_quantity_progress_and_daily_actions(app):
  assert sum(b['quantity'] for b in q['buckets'])==580
  assert q['stages'][0]['good']==100 and q['stages'][1]['good']==50
  assert c.get(f'/tickets/{tid}/progress').status_code==200
- assert c.get('/today').status_code==403
+ assert c.get('/today').status_code==200
  sign_in(c,'planner');assert c.get('/today').status_code==200
  assert b'Release readiness' not in c.get(f'/tickets/{tid}/plan').data # released requirements locked
 

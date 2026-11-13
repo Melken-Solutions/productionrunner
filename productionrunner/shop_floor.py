@@ -40,7 +40,12 @@ def register_shop_floor(app, db, roles_required):
 
     @app.get('/shop-floor')
     @roles_required('operator','admin')
-    def shop_floor():
+    def shop_floor(today_view=False):
+        from datetime import date, datetime, timezone
+        try:
+            day=date.fromisoformat(request.args.get('day',datetime.now(timezone.utc).date().isoformat())).isoformat()
+        except ValueError:
+            abort(400, 'Choose a valid date.')
         page = page_number()
         stations=db().execute('SELECT id,name FROM stations WHERE tenant_id=? AND active=1 ORDER BY name',(g.tenant['id'],)).fetchall()
         key='shop_station_'+str(g.tenant['id'])
@@ -61,11 +66,18 @@ def register_shop_floor(app, db, roles_required):
                 db().execute('BEGIN')
                 station_travelers=travelers(db(),g.tenant['id'],int(selected))
             groups=[('Working now',{'running','paused'}),('Ready at this station',{'ready','setup','inspection'}),('Upcoming — finish earlier steps first',{'upcoming'}),('Waiting / held',{'planning','held','blocked'})]
-            return render_template('station_queue.html',stations=stations,selected_station=selected,primary_station=primary,groups=groups,entries=station_travelers)
+            if today_view:
+                from .production_calendar import assignments
+                planned=assignments(db(),g.tenant['id'])
+                for row in station_travelers:
+                    row['planned_day']=planned.get((row['ticket_id'],row['unit_id']),planned.get((row['ticket_id'],None),{})).get('day')
+                all_statuses={'running','paused','ready','setup','inspection','upcoming','planning','held','blocked'}
+                groups=[('Working now',{'running','paused'}),('Planned today',all_statuses),('HOT jobs',all_statuses),('Ready at this station',{'ready','setup','inspection'}),('Waiting / upcoming',{'upcoming','planning','held','blocked'})]
+            return render_template('station_queue.html',today_view=today_view,day=day,stations=stations,selected_station=selected,primary_station=primary,groups=groups,entries=station_travelers)
         tickets = db().execute("SELECT t.*,p.priority AS hot_priority FROM tickets t LEFT JOIN ticket_priorities p ON p.tenant_id=t.tenant_id AND p.ticket_id=t.id WHERE t.tenant_id=? AND (t.state!='accepted' OR ?=1) AND NOT EXISTS(SELECT 1 FROM ticket_cancellations x WHERE x.tenant_id=t.tenant_id AND x.ticket_id=t.id) ORDER BY (p.priority IS NULL),p.priority,p.hot_since,CASE WHEN p.priority IS NOT NULL THEN t.id END,t.created_at DESC,t.id",(g.tenant['id'],bool(selected))).fetchall()
         if selected:tickets=[t for t in tickets if t['id'] in station_rows]
         tickets=tickets[(page-1)*50:page*50+1]
-        return render_template('shop_queue.html',tickets=tickets[:50],has_more=len(tickets)>50,page=page,stations=stations,selected_station=selected,primary_station=primary,station_rows=station_rows)
+        return render_template('shop_queue.html',today_view=today_view,day=day,tickets=tickets[:50],has_more=len(tickets)>50,page=page,stations=stations,selected_station=selected,primary_station=primary,station_rows=station_rows)
 
     @app.get('/shop-floor/scan')
     @roles_required('operator','admin')
