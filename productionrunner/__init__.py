@@ -65,6 +65,9 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
+    from .display_sessions import DisplaySessionInterface
+    app.session_interface = DisplaySessionInterface()
+
     from .object_storage import configure as configure_storage
     configure_storage(app)
     register_hosting(app)
@@ -101,6 +104,13 @@ def create_app(config=None):
         if g.tenant and epoch(db(), g.tenant['id'], g.user['id']) != session.get('membership_epoch', 0):
             g.tenant = None
         g.roles = g.tenant['roles'].split(',') if g.tenant else []
+        if session.get('display_device') and set(g.roles) != {'display'}:
+            session.clear()
+            g.user = g.tenant = None
+            g.roles = []
+        elif set(g.roles) == {'display'}:
+            session['display_device'] = True
+            session.permanent = True
         if g.user and not g.tenant:
             session.clear()
             g.user = None
@@ -231,6 +241,8 @@ def create_app(config=None):
                                membership_epoch=identity['membership_epoch'], pin_version=identity['version'], csrf=secrets.token_hex(32))
                 session.permanent = True
                 member_roles = db().execute('SELECT roles FROM memberships WHERE tenant_id=? AND user_id=?', (identity['tenant_id'], identity['id'])).fetchone()[0].split(',')
+                if set(member_roles) == {'display'}:
+                    session['display_device'] = True
                 return redirect(url_for('tv_boards' if 'display' in member_roles else 'shop_floor' if 'operator' in member_roles and not {'planner','admin'} & set(member_roles) else 'index'))
             error = 'Too many attempts. Try again in 15 minutes.' if status == 429 else 'Organization, username or credential is incorrect.'
             response = app.make_response((render_template('login.html', error=error), status))

@@ -18,3 +18,13 @@ The shared header is reduced to shop identity and sign-out. Jobs returns to the 
 Validated with touch emulation at 1024×768 and portrait at 768×1024. Physical iPad/Safari, glove, stylus, scanner and printer acceptance remains a shop test.
 
 Station queues refresh every 15 seconds while idle. Refresh pauses while scanning or using controls and does not refresh an open work form. A failed refresh displays a stale/offline warning. After completing an operation, the handoff identifies the next assigned station. For example, finishing one 50-piece lot from a 100-piece order makes 50 ready at the next station and leaves the other 50 upcoming. Upcoming work cannot be started through its station card. Station selection never changes user permissions.
+
+## Dedicated TV and touch-only operation
+
+Use a separate **display-only** account on each shared TV. Its cookie renews on successful requests, including live board refreshes, so normal daily use and overnight shutdowns do not require another sign-in. It has a one-year inactivity allowance; cookie deletion, explicit sign-out, revoked membership, credential changes or a signing-key change still require sign-in. Interactive accounts retain the existing eight-hour session lifetime. Existing display accounts gain the renewed device session on their next authenticated request; an already expired login must sign in once.
+
+TV columns now shrink to the viewport even with long part numbers and branding. Full-screen mode uses the same responsive layout. If the TV itself crops the browser edges, use its Just Scan / Screen Fit / 1:1 picture setting.
+
+For a released internal operation without a planner-assigned station, open the traveler and choose **Pick up at station**. Your selected station is preselected, and Start records the actual station and person for that traveler. Other stations stop showing that traveler as available while its session is open. Assigned operations retain their planned station. Route order, holds, outside processing and first-piece requirements still apply. First-piece checks require a planned station and independent approval. Planners can explicitly authorize unassigned station pickup when releasing the Job Plan; inactive assigned stations cannot be bypassed.
+
+On completion, select **All N units completed** and a **Verification result**. No quantity or verification result is preconfirmed. Routine checks with no measured values require no typing. If measurements are required, choose measured results or an identified completed check sheet and supply those results/reference. Other verification requires details. A failed check must use stop/hold controls. The selected statement and details are saved with the plan criteria and operator audit trail.

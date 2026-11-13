@@ -23,6 +23,8 @@ def require_dispatch(conn,tenant_id,ticket_id,operation_id):
 
 def snapshot(conn,tenant_id,ticket_id,operation_id,actor_id,timestamp,unit_id=None):
     a=assignment(conn,tenant_id,operation_id)
+    if not a:
+        a=conn.execute('SELECT station_id,station_name,NULL AS operator_id,NULL AS username FROM work_sessions WHERE tenant_id=? AND ticket_id=? AND operation_id=? AND unit_id IS ? ORDER BY id DESC LIMIT 1',(tenant_id,ticket_id,operation_id,unit_id)).fetchone()
     conn.execute('INSERT INTO completion_assignments(tenant_id,ticket_id,operation_id,unit_id,station_id,station_name,assigned_user_id,assigned_username,actual_user_id,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
                  (tenant_id,ticket_id,operation_id,unit_id,a['station_id'] if a else None,a['station_name'] if a else None,a['operator_id'] if a else None,a['username'] if a else None,actor_id,timestamp))
     return f"Station: {a['station_name'] if a else 'unassigned legacy work'}; assigned operator: {(a['username'] or 'unassigned') if a else 'unassigned'}; actual operator ID: {actor_id}"
@@ -98,6 +100,8 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
             old=db().execute('SELECT * FROM stations WHERE tenant_id=? AND id=?',(g.tenant['id'],station_id)).fetchone()
             if not old: abort(404,'Unknown station.')
             if request.form.get('version')!=str(old['version']): abort(409,'Station changed. Reload first.')
+            from .work_tracking import open_sessions
+            if active=='0' and any(s['station_id']==station_id for s in open_sessions(db(),g.tenant['id'])):abort(409,'Stop this station’s active work sessions before deactivation.')
             from .job_plan import station_in_use
             if active=='0' and station_in_use(db(),g.tenant['id'],station_id):abort(409,'Station belongs to an open Job Plan. Finish/cancel the job or change its draft plan before deactivation.')
             if active=='0' and db().execute("SELECT 1 FROM operation_assignments a JOIN tickets t ON t.id=a.ticket_id AND t.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.station_id=? AND t.state!='accepted' AND NOT EXISTS(SELECT 1 FROM ticket_cancellations c WHERE c.tenant_id=t.tenant_id AND c.ticket_id=t.id)",(g.tenant['id'],station_id)).fetchone():
@@ -160,7 +164,10 @@ def register_dispatch(app,db,roles_required,now,lock_ticket,event):
             from .vendors import validate_ticket as validate_vendors
             validate_vendors(db(),g.tenant['id'],ticket_id)
             missing=db().execute('SELECT 1 FROM operations o LEFT JOIN operation_assignments a ON a.tenant_id=o.tenant_id AND a.operation_id=o.id LEFT JOIN stations s ON s.tenant_id=a.tenant_id AND s.id=a.station_id WHERE o.tenant_id=? AND o.ticket_id=? AND NOT EXISTS(SELECT 1 FROM outside_steps x WHERE x.tenant_id=o.tenant_id AND x.operation_id=o.id) AND (s.id IS NULL OR s.active=0)',(g.tenant['id'],ticket_id)).fetchone()
-            if missing: abort(409,'Assign an active station to every internal routing step before release.')
+            if missing:
+                inactive=db().execute('SELECT 1 FROM operation_assignments a JOIN stations s ON s.id=a.station_id AND s.tenant_id=a.tenant_id WHERE a.tenant_id=? AND a.ticket_id=? AND s.active=0',(g.tenant['id'],ticket_id)).fetchone()
+                if inactive or request.form.get('allow_unassigned')!='yes':abort(409,'Assign active stations or confirm that unassigned internal work may be picked up at a station.')
+                event(ticket_id,'unassigned_station_pickup_authorized','Planner authorized active stations to pick up unassigned internal work.')
             from .job_plan import release_check
             release_check(db(),g.tenant['id'],ticket,event)
             db().execute('UPDATE ticket_dispatch SET released=1 WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id))

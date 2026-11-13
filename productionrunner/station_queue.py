@@ -42,13 +42,16 @@ def travelers(conn, tenant, station):
             current=pending[0] if pending else None
             if unit['state']!='accepted':
                 for op in pending:
-                    if op['station_id']!=station:continue
+                    active=sessions.get((ticket['id'],uid,op['id']))
+                    effective_station=active['station_id'] if active else op['station_id']
+                    if effective_station is not None and effective_station!=station:continue
+                    if effective_station is None and (op!=current or outside_step(conn,tenant,op['id'])):continue
                     if not live:status,note='planning','Waiting for planner release'
                     elif unit['state']=='held' and op==current:status,note='held','Segregate material; disposition required'
                     elif op!=current:status,note='upcoming','Waiting for '+(current['station_name'] or current['name'])
                     elif outside_step(conn,tenant,op['id']):status,note='blocked','Outside processing / vendor handoff'
                     elif not first_piece_passed(conn,tenant,ticket['id'],op['id']):status,note='setup','First-piece approval required before production'
-                    else:status,note='ready','Ready at this station'
+                    else:status,note='ready','Unassigned — pick up at this station' if effective_station is None else 'Ready at this station'
                     active=sessions.get((ticket['id'],uid,op['id']))
                     if active and status in {'ready','setup'}:
                         note=('Setup · ' if status=='setup' else '')+active['current_operator']

@@ -32,6 +32,12 @@ def evidence(conn,tenant,tid,key,event,unit=None,passing=True):
     if isinstance(key,int):require_first_piece(conn,tenant,tid,key)
     elif not conn.execute('SELECT 1 FROM stations WHERE tenant_id=? AND id=? AND active=1',(tenant,step['station_id'])).fetchone():abort(409,'The planned final-stage station is inactive. Contact Admin.')
     value=request.form.get('plan_evidence','').strip()
+    choice=request.form.get('verification_result')
+    if choice is not None:
+        choices={'checks_passed':'All listed checks passed; operator confirmed no measured values required','measurements':'Checks passed; measured results','recorded':'Checks passed; identified check sheet','other':'Other verification'}
+        if not isinstance(key,int) or choice not in choices:abort(400,'Choose a verification result.')
+        if choice!='checks_passed' and not value:abort(400,'Add required measurements, check-sheet reference or verification details.')
+        value=choices[choice]+(': '+value if value else '')
     if not 1<=len(value)<=4000:abort(400,'Record Job Plan check results, measurements and acceptance evidence.')
     event(tid,'job_plan_check_recorded',json.dumps(dict(plan_id=p['id'],step=key,unit_id=unit,criteria=step['criteria'],evidence=value,passing=passing,station=step.get('station_name'))))
 

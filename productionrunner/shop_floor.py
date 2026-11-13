@@ -86,7 +86,7 @@ def register_shop_floor(app, db, roles_required):
             if not available:
                 assigned=assignment(db(),g.tenant['id'],op['id']) if op else None
                 return render_template('station_handoff.html',**data,next_station=assigned['station_id'] if assigned else None,message='Not ready at this station',detail=matches[0]['note'] if matches else 'Next station: '+assigned['station_name']+'. Keep the traveler with the material.' if assigned else 'Production is complete. Keep the traveler with the material for inspection, packing or shipping.')
-        if data['can_complete'] and assignment(db(),g.tenant['id'],op['id']) and not outside_step(db(),g.tenant['id'],op['id']):
+        if data['can_complete'] and (assignment(db(),g.tenant['id'],op['id']) or db().execute('SELECT 1 FROM stations WHERE tenant_id=? AND active=1',(g.tenant['id'],)).fetchone()) and not outside_step(db(),g.tenant['id'],op['id']):
             return redirect(url_for('station_work',code=code))
         page = page_number()
         units=[]

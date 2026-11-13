@@ -3,7 +3,7 @@ import csv
 import io
 import json
 from datetime import date, datetime, timedelta, timezone
-from flask import abort, current_app, g, redirect, render_template, request, Response, url_for
+from flask import abort, current_app, g, redirect, render_template, request, Response, url_for, session as login_session
 from .intake import actor
 from .dispatch import assignment, require_dispatch
 
@@ -139,10 +139,14 @@ def register_work_tracking(app,db,roles_required,now,event):
                 from .outside_processing import require_internal
                 require_internal(db(),g.tenant['id'],op['id'])
                 require_dispatch(db(),g.tenant['id'],ticket['id'],op['id'])
-                a=assignment(db(),g.tenant['id'],op['id'])
-                if not a:abort(409,'Assign this operation to a station first.')
                 sessions=open_sessions(db(),g.tenant['id']);uid=unit['id'] if unit else None
                 active=next((s for s in sessions if s['ticket_id']==ticket['id'] and s['unit_id']==uid and s['operation_id']==op['id']),None)
+                a=active or assignment(db(),g.tenant['id'],op['id'])
+                if not a:
+                    selected=request.form.get('station_id','')
+                    if not selected.isascii() or not selected.isdigit() or len(selected)>10:abort(400,'Choose an active station.')
+                    a=db().execute('SELECT id AS station_id,name AS station_name FROM stations WHERE tenant_id=? AND id=? AND active=1',(g.tenant['id'],int(selected))).fetchone()
+                    if not a:abort(400,'Choose an active station for this unassigned operation.')
                 action=request.form.get('action');reason='';stamp=clock()
                 if action in {'pause','stop'}:
                     reason=request.form.get('reason','')
@@ -181,7 +185,9 @@ def register_work_tracking(app,db,roles_required,now,event):
         active=next((s for s in open_sessions(db(),g.tenant['id']) if s['ticket_id']==ticket['id'] and s['unit_id']==(unit['id'] if unit else None)),None)
         from .job_plan import first_piece_passed
         first_ready=not op or first_piece_passed(db(),g.tenant['id'],ticket['id'],op['id'])
-        return render_template('station_work.html',first_ready=first_ready,ticket=ticket,unit=unit,target=unit if unit else ticket,op=op,active=active,reasons=reasons(),modes=MODES,code=code,assigned=assignment(db(),g.tenant['id'],op['id']) if op else None)
+        assigned=assignment(db(),g.tenant['id'],op['id']) if op else None
+        if active:assigned=active
+        return render_template('station_work.html',pickup_station=login_session.get('shop_station_'+str(g.tenant['id']),''),first_ready=first_ready,ticket=ticket,unit=unit,target=unit if unit else ticket,op=op,active=active,reasons=reasons(),modes=MODES,code=code,assigned=assigned)
 
     @app.route('/admin/work',methods=['GET','POST'])
     @roles_required('admin')

@@ -20,3 +20,11 @@ window.addEventListener("pageshow", () => {
     form.querySelector("[data-submit-status]").textContent = "";
   });
 });
+
+// Keep routine confirmations compact; reveal evidence only when it is needed.
+document.querySelectorAll('[name=verification_result]').forEach(select => {
+  const details=select.closest('fieldset').querySelector('[data-verification-details]');
+  const field=details.querySelector('textarea');
+  const update=()=>{const required=!!select.value&&select.value!=='checks_passed';field.required=required;details.open=required;};
+  select.addEventListener('change',update);update();
+});
