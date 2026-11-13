@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block content %}
+<p><a href="{{ url_for('part_detail',part_id=part.id) }}">← Part and drawings</a></p>
+<p class="eyebrow">REUSABLE MANUFACTURING PLAN</p><h1>{{ part.pn }} · {{ part.revision }}</h1>
+<p>Approved defaults for this exact drawing revision. New requests receive a copy for review; existing requests and released jobs never change when a template changes.</p>
+{% if current %}
+<section class="card stack"><h2>Template revision {{ current.revision }} · {{ current.status }}</h2>
+{% if current.status=='approved' %}<p>This plan loads when you select this PN/revision on a new request.</p><a class="button" href="{{ url_for('intake_new',part_id=part.id) }}">Create request using this plan</a>{% else %}<p>This template is withdrawn and will not load on new requests. Publish a new revision from an approved request when ready.</p>{% endif %}
+{% set content=current.content %}{% if content.material %}<p><strong>Material:</strong> {{ content.material.spec.name }} · {{ content.material.notes }}</p>{% endif %}
+<ol>{% for step in content.plan.steps %}<li><strong>{{ step.name }}</strong>{{ ' · Outside processing' if step.outside else '' }}<p>{{ step.instructions }}</p><p>Checks: {{ step.criteria }}{% if step.first_piece %} · First-piece approval required{% endif %}</p></li>{% endfor %}</ol>
+{% if content.outside %}<p><strong>Vendor:</strong> {{ content.outside.vendor }} · {{ content.outside.service }}</p><p>{{ content.outside.instructions }}</p><p>Inbound inspection: {{ content.outside.inspection_requirements }}</p>{% endif %}
+{% for stage in ['inspection','packing','shipping'] %}<p><strong>{{ stage|capitalize }}:</strong> {{ content.plan[stage].criteria }}</p>{% endfor %}
+<p>DXF: {{ 'Required' if content.plan.dxf_required else 'Not required by this plan' }}</p>
+{% if current.status=='approved' %}<details><summary>Withdraw from future use</summary><form method="post" action="{{ url_for('withdraw_plan_template',part_id=part.id) }}" class="stack"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="version" value="{{ current.revision }}">{% with reason_group='planning', reason_required=true %}{% include 'reason_fields.html' %}{% endwith %}<button class="secondary">Withdraw template</button></form></details>{% endif %}</section>
+{% else %}<section class="card"><h2>No approved template yet</h2><p>Create and approve a production request for this part, then choose “Save as approved part template” on the request.</p><a class="button" href="{{ url_for('intake_new',part_id=part.id) }}">Plan this part</a></section>{% endif %}
+<section class="card"><h2>Template history</h2><ol>{% for row in history %}<li>Revision {{ row.revision }} · {{ row.status }} · {{ row.username }} · {{ row.created_at }} UTC<p>{{ row.reason }}</p><a href="{{ url_for('intake_detail',rid=row.source_request_id) }}">Source request</a></li>{% else %}<li>No published revisions.</li>{% endfor %}</ol></section>
+{% endblock %}

@@ -1,0 +1,1 @@
+{% set origin=repair_origin(ticket) %}{% if origin %}<p class="alert">RETURN REPAIR · <a href="{{ url_for('ticket_returns',ticket_id=origin.ticket_id) }}">Return {{ origin.return_id }} / original job {{ origin.ticket_id }}</a>. These travelers cover returned material; original production evidence remains unchanged.</p>{% endif %}

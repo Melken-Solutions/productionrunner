@@ -1,0 +1,36 @@
+# Staging configuration. Secrets and final hostname must be supplied before deployment.
+services:
+  - type: web
+    name: productionrunner-staging
+    runtime: python
+    repo: https://github.com/Melken-Solutions/productionrunner
+    branch: feat/provisional-jobrunner-mvp
+    region: virginia
+    plan: free
+    autoDeployTrigger: 'off'
+    buildCommand: pip install -r requirements-hosting.txt
+    startCommand: python -m productionrunner.render_serve
+    healthCheckPath: /health/ready
+    envVars:
+      - key: PR_ENV
+        value: production
+      - key: PR_HTTPS
+        value: '1'
+      - key: PR_BIND_HOST
+        value: 0.0.0.0
+      - key: PR_SECRET_KEY
+        generateValue: true
+      - key: PR_DATABASE_URL
+        sync: false
+      - key: PR_TRUSTED_HOSTS
+        sync: false
+      - key: PR_PUBLIC_ORIGIN
+        sync: false
+      - key: PR_FILE_STORAGE
+        value: supabase
+      - key: PR_SUPABASE_URL
+        value: https://imhplsizgijerkqemxjy.supabase.co
+      - key: PR_STORAGE_BUCKET
+        value: productionrunner-files
+      - key: PR_SUPABASE_SECRET_KEY
+        sync: false

@@ -1,0 +1,1 @@
+document.querySelectorAll('[data-custom-definition]').forEach(form=>{const kind=form.elements.kind;const label=form.querySelector('[data-options]');function sync(){label.hidden=kind.value!=='select';form.elements.options.required=!label.hidden;}kind.addEventListener('change',sync);sync();});

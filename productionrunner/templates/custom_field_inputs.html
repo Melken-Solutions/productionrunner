@@ -1,0 +1,6 @@
+{% set definitions=custom_definitions() %}{% set previous=request_custom(entry.id) if entry else [] %}
+<input type="hidden" name="custom_fields_revision" value="{{ custom_revision() }}">
+{% if definitions %}<fieldset class="card stack"><legend>Shop details</legend><p class="muted">Configured by your organization. Required fields must be completed before approval.</p><div class="grid">
+{% for f in definitions %}{% set old=previous|selectattr('id','equalto',f.id)|list %}{% set value=old[0].value if old else '' %}<label>{{ f.label }}{% if f.required %} · Required for approval{% endif %}
+{% if f.kind in ['select','boolean'] %}<select name="custom_{{ f.id }}" data-custom-label="{{ f.label }}"><option value="">Not specified</option>{% for choice in (f.options if f.kind=='select' else ['yes','no']) %}<option value="{{ choice }}" {% if value==choice %}selected{% endif %}>{{ choice }}</option>{% endfor %}</select>{% if value and f.kind=='select' and value not in f.options %}<small>Previous value: {{ value }}. Choose from the current approved options.</small>{% endif %}
+{% else %}<input name="custom_{{ f.id }}" data-custom-label="{{ f.label }}" type="{{ f.kind if f.kind in ['number','date'] else 'text' }}" {% if f.kind=='number' %}step="any"{% endif %} maxlength="1000" value="{{ value }}">{% endif %}</label>{% endfor %}</div></fieldset>{% endif %}
