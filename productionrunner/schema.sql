@@ -775,3 +775,32 @@ CREATE TABLE IF NOT EXISTS operation_templates (
 CREATE INDEX IF NOT EXISTS operation_templates_actor ON operation_templates(tenant_id,actor_id);
 CREATE TRIGGER IF NOT EXISTS operation_templates_no_update BEFORE UPDATE ON operation_templates BEGIN SELECT RAISE(ABORT,'Operation template history is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS operation_templates_no_delete BEFORE DELETE ON operation_templates BEGIN SELECT RAISE(ABORT,'Operation template history is immutable'); END;
+
+-- Job-linked conversations and per-person read receipts.
+CREATE TABLE IF NOT EXISTS job_threads (
+ id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,unit_id TEXT,station_id INTEGER,
+ category TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','acknowledged','resolved')),
+ created_by INTEGER NOT NULL,created_at TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,ticket_id) REFERENCES tickets(tenant_id,id),
+ FOREIGN KEY(tenant_id,ticket_id,unit_id) REFERENCES serial_units(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,station_id) REFERENCES stations(tenant_id,id),
+ FOREIGN KEY(tenant_id,created_by) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS job_messages (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,thread_id INTEGER NOT NULL,
+ actor_id INTEGER NOT NULL,body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 2000),created_at TEXT NOT NULL,
+ FOREIGN KEY(tenant_id,ticket_id,thread_id) REFERENCES job_threads(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,actor_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS job_message_reads (
+ tenant_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,thread_id INTEGER NOT NULL,user_id INTEGER NOT NULL,last_message_id INTEGER NOT NULL,
+ PRIMARY KEY(tenant_id,thread_id,user_id),
+ FOREIGN KEY(tenant_id,ticket_id,thread_id) REFERENCES job_threads(tenant_id,ticket_id,id),
+ FOREIGN KEY(tenant_id,user_id) REFERENCES memberships(tenant_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS job_threads_queue ON job_threads(tenant_id,status,id);
+CREATE INDEX IF NOT EXISTS job_messages_thread ON job_messages(tenant_id,thread_id,id);
+CREATE INDEX IF NOT EXISTS job_threads_job ON job_threads(tenant_id,ticket_id);
+CREATE TRIGGER IF NOT EXISTS job_messages_no_update BEFORE UPDATE ON job_messages BEGIN SELECT RAISE(ABORT,'Job messages are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS job_messages_no_delete BEFORE DELETE ON job_messages BEGIN SELECT RAISE(ABORT,'Job messages are immutable'); END;

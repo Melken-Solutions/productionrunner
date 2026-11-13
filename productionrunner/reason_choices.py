@@ -2,6 +2,7 @@
 from flask import abort,request
 from werkzeug.datastructures import ImmutableMultiDict
 GROUPS={
+ 'deletion':['Duplicate job','Test or training job','Created in error','Customer cancellation'],
  'change':['Initial setup','Correct information','Update requirements','Improve process','Periodic review','Remove obsolete configuration'],
  'access':['New team member','Role or responsibility change','Credential maintenance','Remove access','Correct account information'],
  'planning':['Update customer request','Change production route','Change material requirements','Adjust schedule or priority','Review and approve plan','Correct planning information','Customer cancellation','Withdraw approval'],

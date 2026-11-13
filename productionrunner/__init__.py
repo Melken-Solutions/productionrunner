@@ -210,6 +210,10 @@ def create_app(config=None):
     register_shop_floor(app, db, roles_required)
     from .developer_admin import register_developer
     register_developer(app, db, now)
+    from .job_messages import register as register_job_messages
+    register_job_messages(app,db,roles_required,now)
+    from .job_deletion import register as register_job_deletion
+    register_job_deletion(app,db,roles_required,now)
     from .production_controls import register_controls
     register_controls(app, db, roles_required, now, lock_ticket)
     from .pin_auth import authenticate, register_pin_auth

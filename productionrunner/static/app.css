@@ -14,3 +14,5 @@
 .delivery-schedule [data-add-shipment]{justify-self:start;width:auto}
 .delivery-schedule [data-schedule-balance]{font-weight:700}
 @media(max-width:600px){.delivery-schedule .shipment-row{grid-template-columns:1fr}.delivery-schedule [data-remove-shipment]{justify-self:start;width:auto}}
+
+.primary-nav [data-message-alert]{gap:6px}[data-message-count]{font-weight:750}.conversation-actions{display:flex;flex-wrap:wrap;gap:12px}
