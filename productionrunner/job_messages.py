@@ -2,7 +2,7 @@
 from flask import abort,g,request,render_template,redirect,url_for,session,jsonify
 from .intake import actor
 
-CATEGORIES=['Drawing question','DXF issue','Material issue','Quality concern','Quantity mismatch','Help needed','Ready for planner review','Other']
+from .message_snippets import CATEGORIES, available, selected
 REPLIES=['Checking now','Please pause work and wait for guidance','Please review the updated drawing','Please contact me','Issue resolved at the station']
 ROLES=('operator','planner','admin')
 
@@ -61,15 +61,17 @@ def register(app,db,roles_required,now):
         if picked and picked not in {str(s['id']) for s in stations}:abort(400,'Choose an active station.')
         if request.method=='POST':
             category=request.form.get('category');note=request.form.get('note','').strip()
-            if category not in CATEGORIES or len(note)>1800 or (category=='Other' and not note):abort(400,'Choose a request reason; Other requires a note.')
+            if 'snippet_id' not in request.form and (category not in CATEGORIES or len(note)>1800 or (category=='Other' and not note)):abort(400,'Choose a request reason; Other requires a note.')
             with db():
                 db().execute('BEGIN IMMEDIATE');actor(db(),g.tenant['id'],g.user['id'],ROLES);ticket(ticket_id)
+                if 'snippet_id' in request.form:category,body=selected(db(),g.tenant['id'],'request')
+                else:body=category+(': '+note if note else '')
                 row=db().execute('INSERT INTO job_threads(tenant_id,ticket_id,unit_id,station_id,category,created_by,created_at) VALUES(?,?,?,?,?,?,?)',(g.tenant['id'],ticket_id,unit or None,int(picked) if picked else None,category,g.user['id'],now()))
                 thread_id=row.lastrowid
-                message=db().execute('INSERT INTO job_messages(tenant_id,ticket_id,thread_id,actor_id,body,created_at) VALUES(?,?,?,?,?,?)',(g.tenant['id'],ticket_id,thread_id,g.user['id'],category+(': '+note if note else ''),now()))
+                message=db().execute('INSERT INTO job_messages(tenant_id,ticket_id,thread_id,actor_id,body,created_at) VALUES(?,?,?,?,?,?)',(g.tenant['id'],ticket_id,thread_id,g.user['id'],body,now()))
                 seen(dict(id=thread_id,ticket_id=ticket_id),message.lastrowid)
             return redirect(url_for('job_conversation',thread_id=thread_id))
-        return render_template('new_job_message.html',ticket=job,categories=CATEGORIES,stations=stations,unit=unit,selected_station=picked)
+        return render_template('new_job_message.html',ticket=job,snippets=available(db(),g.tenant['id'],'request'),stations=stations,unit=unit,selected_station=picked)
 
     @app.route('/messages/<int:thread_id>',methods=['GET','POST'])
     @roles_required(*ROLES)
@@ -87,10 +89,13 @@ def register(app,db,roles_required,now):
                     status='acknowledged' if action=='acknowledge' else 'resolved'
                     body='Request acknowledged.' if action=='acknowledge' else 'Request marked resolved.'
                 elif action=='reply':
-                    choice=request.form.get('quick_reply','');note=request.form.get('note','').strip()
-                    if choice and choice not in REPLIES:abort(400,'Choose a listed reply.')
-                    body=(choice+('\n' if choice and note else '')+note).strip()
-                    if not 1<=len(body)<=2000:abort(400,'Choose a quick reply or enter up to 2,000 characters.')
+                    if 'snippet_id' in request.form:
+                        _,body=selected(db(),g.tenant['id'],'reply')
+                    else:  # Existing open forms can still finish safely.
+                        choice=request.form.get('quick_reply','');note=request.form.get('note','').strip()
+                        if choice and choice not in REPLIES:abort(400,'Choose a listed reply.')
+                        body=(choice+('\n' if choice and note else '')+note).strip()
+                        if not 1<=len(body)<=2000:abort(400,'Choose a quick reply or enter up to 2,000 characters.')
                     if status=='resolved':status='new'
                     elif status=='new' and {'admin','planner'} & set(g.roles):status='acknowledged'
                 else:abort(400,'Choose a conversation action.')
@@ -99,4 +104,4 @@ def register(app,db,roles_required,now):
             messages=db().execute('SELECT m.*,u.username FROM job_messages m JOIN users u ON u.id=m.actor_id WHERE m.tenant_id=? AND m.thread_id=? ORDER BY m.id',(g.tenant['id'],thread_id)).fetchall()
             if messages:seen(thread,messages[-1]['id'])
         if request.method=='POST':return redirect(url_for('job_conversation',thread_id=thread_id))
-        return render_template('job_conversation.html',thread=thread,ticket=job,messages=messages,quick_replies=REPLIES)
+        return render_template('job_conversation.html',thread=thread,ticket=job,messages=messages,snippets=available(db(),g.tenant['id'],'reply'))

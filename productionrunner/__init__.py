@@ -210,6 +210,8 @@ def create_app(config=None):
     register_shop_floor(app, db, roles_required)
     from .developer_admin import register_developer
     register_developer(app, db, now)
+    from .message_snippets import register as register_message_snippets
+    register_message_snippets(app,db,roles_required,now)
     from .job_messages import register as register_job_messages
     register_job_messages(app,db,roles_required,now)
     from .job_deletion import register as register_job_deletion

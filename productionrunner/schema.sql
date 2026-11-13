@@ -804,3 +804,13 @@ CREATE INDEX IF NOT EXISTS job_messages_thread ON job_messages(tenant_id,thread_
 CREATE INDEX IF NOT EXISTS job_threads_job ON job_threads(tenant_id,ticket_id);
 CREATE TRIGGER IF NOT EXISTS job_messages_no_update BEFORE UPDATE ON job_messages BEGIN SELECT RAISE(ABORT,'Job messages are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS job_messages_no_delete BEFORE DELETE ON job_messages BEGIN SELECT RAISE(ABORT,'Job messages are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS message_snippets (
+ id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 80),
+ body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 1800),
+ category TEXT NOT NULL,usage TEXT NOT NULL CHECK(usage IN ('request','reply','both')),
+ active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),version INTEGER NOT NULL DEFAULT 1,
+ UNIQUE(tenant_id,id),UNIQUE(tenant_id,title)
+);
+CREATE INDEX IF NOT EXISTS message_snippets_available ON message_snippets(tenant_id,active,usage,title);

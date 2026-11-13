@@ -16,3 +16,5 @@
 @media(max-width:600px){.delivery-schedule .shipment-row{grid-template-columns:1fr}.delivery-schedule [data-remove-shipment]{justify-self:start;width:auto}}
 
 .primary-nav [data-message-alert]{gap:6px}[data-message-count]{font-weight:750}.conversation-actions{display:flex;flex-wrap:wrap;gap:12px}
+
+.snippet-preview{padding:16px;margin:12px 0;background:#edf5f6;border-left:4px solid #007477;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere}[data-snippet-note][hidden]{display:none}.snippet-composer select{width:100%;max-width:100%}.shop-floor .snippet-composer select{min-height:68px;font-size:21px}

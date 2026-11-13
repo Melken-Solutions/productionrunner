@@ -31,9 +31,9 @@ On completion, select **All N units completed** and a **Verification result**. N
 
 ## Ask a remote planner or admin
 
-On the station traveler choose **Ask planner / admin**, select the reason, and send. The job, lot/unit, station and sender are attached automatically when opening from station work. A note is optional except for Other. Planner/admin **Messages** shows the organization inbox; operator Messages shows their requests and the selected station's conversations.
+On the station traveler choose **Ask planner / admin**, choose a predefined message, review its wording, and send. The job, lot/unit, station and sender are attached automatically when opening from station work. Built-in snippets cover drawing, DXF, material, quality, quantity and assistance questions without typing. Choose **Other / type a note** when you need your own message. Planner/admin **Messages** shows the organization inbox; operator Messages shows their requests and the selected station's conversations.
 
-Planners/admins can acknowledge, send a quick reply or note, and mark a conversation resolved. A new reply to a resolved conversation reopens it. The Messages unread count updates approximately every 15 seconds while the app is visible. Open the conversation to read the reply; refresh an already-open conversation to load new replies. Opening it marks the currently displayed messages read for that person. These are in-app alerts only: no email or background notification is sent when the app is closed. Never rely on messaging for emergency shutdown.
+Planners/admins can acknowledge, choose a predefined reply or type an Other message, and mark a conversation resolved. A new reply to a resolved conversation reopens it. The Messages unread count updates approximately every 15 seconds while the app is visible. Open the conversation to read the reply; refresh an already-open conversation to load new replies. Opening it marks the currently displayed messages read for that person. These are in-app alerts only: no email or background notification is sent when the app is closed. Never rely on messaging for emergency shutdown.
 
 Messages are independent of station timers and quality holds. The operator must use Pause, Stop or the existing hold process when production needs to stop. Messages and status changes retain the actual sender and time. Ordinary users cannot edit or erase individual messages.
 
@@ -42,3 +42,7 @@ Messages are independent of station timers and quality holds. The operator must 
 Organization admins have a **Switch view** menu in the standard app header, Shop Floor header and full-screen TV board. It opens Organization Admin, Planning/requests, Production jobs, Shop Floor, TV boards, Packing/dispatch, Shipping, Parts/drawings, Messages and Station reports directly without signing out.
 
 Admin-only accounts can view station queues and open travelers in **Admin overview**. This is read-only for station production: starting, pausing, resuming and confirming work still require the Operator role. Admin accounts that also have Operator retain their normal production controls. The switcher does not change roles or organizations. Dedicated display-only accounts keep their restricted TV navigation.
+
+### Message snippets
+
+Organization Admin → **Message snippets** lets admins add, edit or disable organization-specific messages for new requests, replies or both. Built-in messages remain available. Operators select from the catalog and review the full text before sending. Editing a snippet never changes a message already sent; an open form with old wording must be reloaded before that snippet can be sent. Changes are audited.
