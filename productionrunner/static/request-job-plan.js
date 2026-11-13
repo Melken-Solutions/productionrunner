@@ -13,19 +13,31 @@
     if (el.type === 'checkbox') el.checked = data[el.dataset.field] === true;
     else el.value = data[el.dataset.field] || '';
   });
+    node.dispatchEvent(new Event('templatefilled'));
     const picker=node.querySelector('[data-operation-template]');if(picker && picker.options.length>1)picker.value=node.dataset.templateKey;
   };
   function templatePicker(node, kind) {
     const select=node.querySelector('[data-operation-template]');
     const options=library.filter(t=>t.kind===kind);
-    options.forEach(t=>select.add(new Option(t.name,t.key)));
-    select.value=node.dataset.templateKey || '';
+    const station=node.querySelector('[data-field=station_id]');
+    function refresh(){
+      const key=node.dataset.templateKey || '';
+      select.replaceChildren(new Option('Choose a standard operation or use custom instructions',''));
+      options.filter(t=>!station.value || !t.station_ids?.length || t.station_ids.map(String).includes(station.value)).forEach(t=>select.add(new Option(t.name,t.key)));
+      if(key && ![...select.options].some(o=>o.value===key))select.add(new Option('Saved operation — review station compatibility',key));
+      select.value=key;
+      const note=node.querySelector('[data-template-note]');
+      const current=options.find(t=>t.key===key);
+      if(note)note.textContent=key && (!current || current.version!==Number(node.dataset.templateVersion))?'Saved instructions retained. The library changed; review before replacing.':key && station.value && current?.station_ids?.length && !current.station_ids.map(String).includes(station.value)?'Station changed. Review whether these saved instructions apply here.':'Choose the station, then the operation. Instructions and checks fill automatically; review drawing-specific requirements.';
+    }
+    station.addEventListener('change',refresh);node.addEventListener('templatefilled',refresh);refresh();
     select.addEventListener('change',()=>{
       const chosen=options.find(t=>t.key===select.value);
       if (!chosen) {node.dataset.templateKey='';sync();return;}
       const previous=read(node);
       if ((previous.instructions || previous.criteria) && !window.confirm('Replace this step’s instructions and checks with the selected template? Review the result before saving.')) {select.value=node.dataset.templateKey || '';return;}
-      fill(node,{...previous,...chosen,outside:false,operation_template:chosen.key,operation_template_version:chosen.version});
+      fill(node,{...previous,...chosen,station_id:previous.station_id || chosen.station_id || '',outside:false,operation_template:chosen.key,operation_template_version:chosen.version});
+      refresh();
       const outside=node.querySelector('[data-field=outside]');if(outside)outside.dispatchEvent(new Event('change'));
       if(chosen.dxf_required)document.getElementById('request-plan-dxf').checked=true;
       sync();

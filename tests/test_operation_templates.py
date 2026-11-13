@@ -54,3 +54,26 @@ def test_request_snapshot_does_not_follow_template_edits(app):
         bad=dict(cleaned,steps=[dict(cleaned['steps'][0],operation_template='not-this-tenant')])
         from werkzeug.exceptions import BadRequest
         with pytest.raises(BadRequest):save(conn,1,rid,bad)
+
+
+def test_station_specific_choices_and_multiple_station_version(app):
+    c=app.test_client();sign_in(c,'admin')
+    for name in ['Laser 1','Laser 2','Drill press','Timesaver']:
+        assert post(c,'/admin/stations',name=name,reason='Shop setup').status_code==302
+    ids={row['name']:row['id'] for row in rows(app,'SELECT * FROM stations')}
+    with sqlite3.connect(app.config['DATABASE']) as conn:
+        conn.row_factory=sqlite3.Row
+        library={t['key']:t for t in current(conn,1)}
+        assert library['laser']['station_ids']==[ids['Laser 1'],ids['Laser 2']]
+        for key in ['drill','countersink','counterbore','tap']:
+            assert library[key]['station_ids']==[ids['Drill press']]
+            assert len(library[key]['instructions'])<=350
+    assert template(c,station_ids=[str(ids['Laser 1']),str(ids['Laser 2'])],station_id=str(ids['Laser 2'])).status_code==302
+    saved=json.loads(rows(app,'SELECT data FROM operation_templates')[0][0])
+    assert saved['station_ids']==[ids['Laser 1'],ids['Laser 2']]
+    assert template(c,version='1',station_ids=['999']).status_code==400
+    assert template(c,version='1',station_ids=[str(ids['Laser 1'])],station_id=str(ids['Drill press'])).status_code==400
+    with sqlite3.connect(app.config['DATABASE']) as conn:
+        conn.execute("INSERT INTO tenants VALUES(2,'beta','Beta')")
+        foreign=conn.execute("INSERT INTO stations(tenant_id,name) VALUES(2,'Other laser')").lastrowid
+    assert template(c,version='1',station_ids=[str(foreign)]).status_code==400

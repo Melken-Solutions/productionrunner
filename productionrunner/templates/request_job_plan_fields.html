@@ -8,8 +8,9 @@
 <div id="request-plan-steps" class="stack"></div>
 <button type="button" id="request-plan-add">+ Add production step</button>
 <template id="request-plan-step"><fieldset class="stack"><legend>Production step <span data-number></span></legend>
-<label>Start from an operation template<select data-operation-template><option value="">Custom step — enter instructions</option></select></label>
+
 <div class="grid"><label>Operation name<input data-field="name" maxlength="120" placeholder="Laser cut, drill holes, deburr, bend…"></label><label>Station<select data-field="station_id"><option value="">Choose station</option>{% for station in planning_stations() %}<option value="{{ station.id }}">{{ station.name }}</option>{% endfor %}</select></label></div>
+<label>Standard operation for this station<select data-operation-template><option value="">Choose a standard operation or use custom instructions</option></select></label><p class="muted" data-template-note></p>
 <label class="check"><input type="checkbox" data-field="outside"> Outside processing — use the vendor plan below</label>
 <details class="planner-details"><summary>Instructions &amp; quality checks</summary><div class="stack"><label>Work instructions<textarea data-field="instructions" maxlength="350" rows="2" placeholder="Tooling, grain direction, bend sequence and drawing references"></textarea></label>
 <label>Acceptance checks<textarea data-field="criteria" maxlength="2000" rows="2" placeholder="Dimensions, tolerances, finish and how to verify"></textarea></label>

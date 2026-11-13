@@ -52,7 +52,7 @@
       outside.checked=Boolean(t.outside);
       for (const key of ['vendor','service','instructions','inspection_requirements']) set('outside_'+key,t.outside?.[key]);
       outside.dispatchEvent(new Event('change',{bubbles:true}));
-      status.textContent='Approved template revision '+t.revision+' loaded. Review the plan and enter job-specific details'+(t.outside?', including the outside return date.':'.');
+      status.textContent='Approved template revision '+t.revision+' loaded · '+t.plan.steps.length+' production steps with saved instructions and checks. Enter quantity, delivery date and order references'+(t.outside?', including the outside return date.':'.');
       document.getElementById('repeat-review').hidden=false;document.getElementById('repeat-hint').hidden=false;
       dirty=false;
     } catch (error) {

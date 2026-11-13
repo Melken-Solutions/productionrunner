@@ -21,6 +21,7 @@
     const exceptions=['pn','revision','requester','destination','description'].filter(name=>!value(name));
     if(exceptions.length)review.append(node('p','Complete this order: '+exceptions.join(', ')+'.','planner-warning'));
     if(!value('required_date'))review.append(node('p','Delivery date is not set. Review the customer commitment.','planner-warning'));
+    if(stage===0)next.textContent=data.template_id?'Review repeat job →':'Continue to Job Plan →';
     if(data.template_id)review.append(node('p','Based on saved part plan. Review order-specific exceptions below.','planner-note'));
     function card(title, lines, target) {
       const box = node('section','','planner-review-item'); box.append(node('h3',title));
@@ -44,12 +45,12 @@
     stage=index; panels.forEach((p,i)=>p.hidden=i!==stage);
     document.querySelectorAll('[data-go]').forEach(b=>{ if (+b.dataset.go===stage) b.setAttribute('aria-current','step'); else b.removeAttribute('aria-current'); });
     back.hidden=stage===0; next.hidden=stage===2;
-    next.textContent=stage===0?'Continue to Job Plan →':'Review request →';
+    next.textContent=stage===0?(plan().template_id?'Review repeat job →':'Continue to Job Plan →'):'Review request →';
     document.getElementById('planner-position').textContent=`Step ${stage+1} of 3 · Not saved until you submit`;
     renderReview();
   }
   document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>show(+b.dataset.go)));
-  next.addEventListener('click',()=>show(Math.min(2,stage+1)));back.addEventListener('click',()=>show(Math.max(0,stage-1)));
+  next.addEventListener('click',()=>show(stage===0 && plan().template_id ? 2 : Math.min(2,stage+1)));back.addEventListener('click',()=>show(Math.max(0,stage-1)));
   form.addEventListener('invalid',e=>{const panel=e.target.closest('[data-panel]');if(panel)show(+panel.dataset.panel);let parent=e.target.parentElement;while(parent&&parent!==form){if(parent.tagName==='DETAILS')parent.open=true;parent=parent.parentElement;}},true);
   form.addEventListener('submit',e=>{if(stage!==2){e.preventDefault();show(2);}});
   form.querySelectorAll('[data-search]').forEach(input=>{
