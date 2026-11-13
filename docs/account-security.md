@@ -18,3 +18,9 @@ flask --app productionrunner reset-password USERNAME --platform --reason "Verifi
 Recovery is audited and revokes existing sessions. Organization passwords belong to the global user identity, so a reset affects all of that user's memberships. Organization admins cannot reset another organization's global password through the web UI. Recovery does not reactivate a disabled account or grant roles. Deliver the replacement password privately and have the owner change it using Account security; changing a temporary password is not yet automatically enforced.
 
 Existing saved staging credential files are provisioning records, not synchronized password stores. After changing a password, save the new one in the user's password manager; the old provisioning file no longer works. PINs are not stored by the application's remember-sign-in feature.
+
+## Permanently removing an organization account
+
+In **People & access → Manage → Delete account from this organization**, review the deletion, type the exact username and select a reason. This works for people and dedicated TV accounts, including previously revoked accounts. Unlike revoking access, deletion removes the account from the directory and prevents restoration through the UI or membership CLI. Existing sessions and the organization PIN are invalidated atomically with an immutable deletion event. Self-deletion is blocked and an active admin must remain.
+
+This is permanent account removal, not erasure of historical identity rows: production, inspection and security records retain attribution, and the username stays reserved. Other organization memberships and their password remain unchanged. For an identity with no other membership the old password is replaced by a random, undisclosed credential. Pending invitations for this username in this organization are revoked. Platform accounts are separate and are not affected.

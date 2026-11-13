@@ -100,8 +100,8 @@ def create_app(config=None):
             'SELECT t.*, m.roles FROM tenants t JOIN memberships m ON m.tenant_id=t.id '
             'WHERE t.id=? AND m.user_id=? AND m.roles != ? ',
             (session.get('tenant_id'), session.get('user_id'), '')).fetchone() if g.user else None
-        from .admin import epoch
-        if g.tenant and epoch(db(), g.tenant['id'], g.user['id']) != session.get('membership_epoch', 0):
+        from .admin import epoch, deleted_member
+        if g.tenant and (deleted_member(db(), g.tenant['id'], g.user['id']) or epoch(db(), g.tenant['id'], g.user['id']) != session.get('membership_epoch', 0)):
             g.tenant = None
         g.roles = g.tenant['roles'].split(',') if g.tenant else []
         if session.get('display_device') and set(g.roles) != {'display'}:

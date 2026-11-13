@@ -109,7 +109,9 @@ def register_commands(app):
             organization = conn.execute('SELECT id FROM tenants WHERE slug=?', (tenant,)).fetchone()
             if not user or not organization:
                 raise click.ClickException('Unknown user or organization.')
-            from .admin import bump, protects_last_admin
+            from .admin import bump, protects_last_admin, deleted_member
+            if deleted_member(conn, organization[0], user[0]):
+                raise click.ClickException('This organization account was permanently deleted and cannot be restored.')
             if protects_last_admin(conn, organization[0], user[0], assigned):
                 raise click.ClickException('Keep at least one active admin. Assign another admin first.')
             conn.execute('INSERT INTO memberships VALUES(?,?,?) ON CONFLICT(tenant_id,user_id) DO UPDATE SET roles=excluded.roles',

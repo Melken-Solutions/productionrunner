@@ -2,12 +2,19 @@
 import json
 import re
 import sqlite3
+import secrets
 
 from flask import abort, g, redirect, render_template, request, url_for
 from werkzeug.security import generate_password_hash
 
 from .pin_auth import audit
 from .tenancy import ROLES
+
+
+def deleted_member(conn, tenant_id, user_id):
+    """Permanent directory removal; immutable history retains its original identity."""
+    return conn.execute("SELECT 1 FROM auth_events WHERE tenant_id=? AND user_id=? AND action='user_deleted' LIMIT 1",
+                        (tenant_id, user_id)).fetchone() is not None
 
 
 def epoch(conn, tenant_id, user_id):
@@ -51,7 +58,7 @@ def register_admin(app, db, roles_required):
                            'LEFT JOIN membership_controls c ON c.tenant_id=m.tenant_id AND c.user_id=m.user_id '
                            'LEFT JOIN pin_credentials p ON p.tenant_id=m.tenant_id AND p.user_id=m.user_id '
                            'WHERE m.tenant_id=? AND m.user_id=?', (g.tenant['id'], user_id)).fetchone()
-        if not row:
+        if not row or deleted_member(db(), g.tenant['id'], user_id):
             abort(404, 'Unknown organization member.')
         return row
 
@@ -120,7 +127,7 @@ def register_admin(app, db, roles_required):
     @roles_required('admin')
     def admin_users():
         members = db().execute('SELECT u.id,u.username,m.roles FROM memberships m JOIN users u ON u.id=m.user_id '
-                               'WHERE m.tenant_id=? ORDER BY u.username', (g.tenant['id'],)).fetchall()
+                               "WHERE m.tenant_id=? AND NOT EXISTS (SELECT 1 FROM auth_events a WHERE a.tenant_id=m.tenant_id AND a.user_id=m.user_id AND a.action='user_deleted') ORDER BY u.username", (g.tenant['id'],)).fetchall()
         return render_template('admin_users.html', members=members, roles=sorted(ROLES))
 
     @app.post('/admin/users')
@@ -181,6 +188,35 @@ def register_admin(app, db, roles_required):
                 record(user_id, 'access_revoked' if not assigned else 'roles_changed',
                        f"{target['roles'] or 'inactive'} → {assigned or 'inactive'}. Reason: {detail}")
         return redirect(url_for('admin_users'))
+
+    @app.post('/admin/users/<int:user_id>/delete')
+    @roles_required('admin')
+    def admin_delete_user(user_id):
+        detail = reason()
+        with db():
+            target = lock_member(user_id)
+            if user_id == g.user['id']:
+                abort(409, 'You cannot delete your own account. Ask another administrator.')
+            if protects_last_admin(db(), g.tenant['id'], user_id, ''):
+                abort(409, 'Keep at least one active admin. Assign another admin first.')
+            if request.form.get('confirm_username', '') != target['username']:
+                abort(400, 'Enter the exact username to confirm permanent removal.')
+            db().execute('UPDATE memberships SET roles=? WHERE tenant_id=? AND user_id=?',
+                         ('', g.tenant['id'], user_id))
+            bump(db(), g.tenant['id'], user_id, invalidate=True)
+            db().execute('UPDATE pin_credentials SET pin_hash=NULL,version=version+1 WHERE tenant_id=? AND user_id=?',
+                         (g.tenant['id'], user_id))
+            # Never change a shared identity's password on behalf of another organization.
+            other = db().execute('SELECT 1 FROM memberships WHERE user_id=? AND tenant_id<>?',
+                                 (user_id, g.tenant['id'])).fetchone()
+            if not other:
+                db().execute('UPDATE users SET password_hash=? WHERE id=?',
+                             (generate_password_hash(secrets.token_urlsafe(64)), user_id))
+            db().execute("UPDATE employee_invitations SET status='revoked' WHERE tenant_id=? AND username=? AND status='pending'",
+                         (g.tenant['id'], target['username']))
+            record(user_id, 'user_deleted', json.dumps({'username': target['username'], 'reason': detail,
+                   'previous_roles': target['roles'], 'history_retained': True}))
+        return redirect(url_for('admin_users', deleted='1'))
 
     @app.post('/admin/users/<int:user_id>/pin')
     @roles_required('admin')

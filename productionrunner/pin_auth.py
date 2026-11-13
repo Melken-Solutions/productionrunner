@@ -44,6 +44,9 @@ def authenticate(conn, clock):
             'JOIN memberships m ON m.user_id=u.id JOIN tenants t ON t.id=m.tenant_id '
             'LEFT JOIN pin_credentials p ON p.tenant_id=m.tenant_id AND p.user_id=m.user_id '
             'WHERE u.username=? AND t.slug=? AND m.roles != ?', (username, tenant, '')).fetchone()
+        from .admin import deleted_member
+        if identity and deleted_member(conn, identity['tenant_id'], identity['id']):
+            identity = None
         credential = request.form.get('pin' if method == 'pin' else 'password', '')
         stored = identity['pin_hash' if method == 'pin' else 'password_hash'] if identity else None
         verified = check_password_hash(stored or DUMMY_HASH, credential)
