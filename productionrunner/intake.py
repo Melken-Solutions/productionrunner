@@ -76,6 +76,8 @@ def document_state(conn, tenant, row):
 
 
 def register_intake(app, db, roles_required, now):
+    from .repeat_jobs import register as register_repeat
+    register_repeat(app, db, roles_required, now)
     @app.context_processor
     def intake_context():
         return dict(request_delivery_schedule=lambda rid:delivery_schedule.request_schedule(db(),g.tenant["id"],rid), request_job_plan=lambda rid:request_plan.get(db(),g.tenant["id"],rid), request_outside=lambda rid:get_plan(db(),g.tenant['id'],rid), request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
@@ -241,6 +243,11 @@ def register_intake(app, db, roles_required, now):
             if row['status'] in {'ticketed', 'cancelled'} or str(row['version']) != request.form.get('version'):
                 abort(409, 'Request changed or cannot be decided. Reload it.')
             if action == 'approve':
+                if not row['requester'] or not row['destination']:
+                    abort(409,'Edit the request to enter the customer and destination before approval.')
+                outside_review=get_plan(db(),g.tenant['id'],rid)
+                if outside_review and not outside_review['due_date']:
+                    abort(409,'Enter a new outside processing return date before approval.')
                 if row['status'] == 'approved':
                     abort(409, 'Request already approved.')
                 from .materials import validate_request as validate_material
