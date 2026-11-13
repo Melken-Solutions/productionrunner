@@ -78,6 +78,8 @@ def document_state(conn, tenant, row):
 def register_intake(app, db, roles_required, now):
     from .repeat_jobs import register as register_repeat
     register_repeat(app, db, roles_required, now)
+    from .release_flow import register as register_release_flow
+    register_release_flow(app, db, roles_required)
     @app.context_processor
     def intake_context():
         return dict(request_delivery_schedule=lambda rid:delivery_schedule.request_schedule(db(),g.tenant["id"],rid), request_job_plan=lambda rid:request_plan.get(db(),g.tenant["id"],rid), request_outside=lambda rid:get_plan(db(),g.tenant['id'],rid), request_for_ticket=lambda ticket: db().execute('SELECT * FROM intake_requests WHERE tenant_id=? AND ticket_id=?', (g.tenant['id'], ticket['id'])).fetchone())
@@ -157,6 +159,8 @@ def register_intake(app, db, roles_required, now):
             if uploaded: log(db(),g.tenant['id'],g.user['id'],rid,'documents_uploaded',uploaded,now())
             delivery_schedule.save_request(db(),g.tenant['id'],g.user['id'],rid,schedule,now())
             log(db(), g.tenant['id'], g.user['id'], rid, 'request_received', dict(data, outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), now())
+        if request.form.get('next_action')=='release' and 'planner' in g.roles:
+            return redirect(url_for('release_review',rid=rid,template=request.form.get('save_template','')))
         return redirect(url_for('intake_detail', rid=rid))
 
     @app.get('/requests/<rid>')
@@ -214,6 +218,8 @@ def register_intake(app, db, roles_required, now):
                 custom_fields.save(db(),g.tenant['id'],rid,custom)
                 delivery_schedule.save_request(db(),g.tenant['id'],g.user['id'],rid,schedule,now(),why)
                 log(db(), g.tenant['id'], g.user['id'], rid, 'request_edited', dict(before=dict(before,outside_processing=previous_outside,material=previous_material,job_plan=previous_plan,custom_fields=previous_custom), after=dict(data,outside_processing=outside,material=material,job_plan=plan,custom_fields=custom), reason=why, approval_invalidated=row['status']=='approved'), now())
+        if request.form.get('next_action')=='release' and 'planner' in g.roles:
+            return redirect(url_for('release_review',rid=rid,template=request.form.get('save_template','')))
         return redirect(url_for('intake_detail', rid=rid))
 
     @app.post('/requests/<rid>/documents')

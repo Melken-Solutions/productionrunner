@@ -38,7 +38,14 @@
     card('Production route', names.map((name,i)=>`${i+1}. ${name}`),1);
     if (value('outside_required') && form.elements.outside_required.checked) card('Outside processing', [value('outside_vendor') || 'Choose a vendor',value('outside_service') || 'Choose a service',`Expected return: ${value('outside_due_date') || 'needed'}`],1);
     const unfinished = !data.steps?.length || data.steps.some(s=>!s.name||!s.instructions||!s.criteria||(!s.outside&&!s.station_id)) || ['inspection','packing','shipping'].some(k=>!data[k]?.station_id||!data[k]?.criteria);
-    if (unfinished) review.append(node('p','Some station assignments, instructions or checks are still missing. You can save a draft and complete them before approval.','planner-warning'));
+    if (unfinished) {
+      const box=node('section','','planner-warning');box.append(node('h3','Complete these plan details'));
+      const missing=[];
+      if(!data.steps?.length)missing.push('Add at least one production step.');
+      (data.steps||[]).forEach((s,i)=>{const fields=[];if(!s.name)fields.push('operation name');if(!s.instructions)fields.push('instructions');if(!s.criteria)fields.push('acceptance checks');if(!s.outside&&!s.station_id)fields.push('station');if(fields.length)missing.push(`Step ${i+1} ${s.name||''}: ${fields.join(', ')}.`);});
+      ['inspection','packing','shipping'].forEach(k=>{const fields=[];if(!data[k]?.station_id)fields.push('station');if(!data[k]?.criteria)fields.push('checks');if(fields.length)missing.push(`${k}: ${fields.join(', ')}.`);});
+      const list=node('ul','');missing.forEach(text=>list.append(node('li',text)));box.append(list);const edit=node('button','Complete Job Plan','secondary');edit.type='button';edit.addEventListener('click',()=>show(1));box.append(edit);review.append(box);
+    }
     review.append(node('p', data.dxf_required ? 'DXF required before approval.' : 'DXF is not required by this plan.','muted'));
   }
   function show(index) {
