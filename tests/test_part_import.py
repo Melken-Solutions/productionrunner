@@ -220,3 +220,22 @@ def test_csv_header_order_and_whitespace(app):
     result=post(c,'/parts/import',mapping=(BytesIO(mapping),'map.csv'),files=[(BytesIO(PDF),'a.pdf')])
     assert result.status_code==302
     assert post(c,result.location,action='confirm').status_code==302
+
+
+def test_fraction_part_number_and_uppercase_dxf(app):
+    c=client_for(app)
+    result=preview(c,'STRIKE-DA-1/8-SS,0,Mod Strike,drawing.pdf,cut.dxf\n',[(PDF,'PR_Uploads/drawing.pdf'),(DXF,'PR_Uploads/CUT.DXF')])
+    assert result.status_code==302
+    assert post(c,result.location,action='confirm').status_code==302
+    part=rows(app,"SELECT * FROM part_revisions WHERE pn='STRIKE-DA-1/8-SS'")[0]
+    assert c.get('/parts/'+part['id']+'/drawing').status_code==200
+    result=post(c,'/requests/new',item_type='standard',source='manual',source_reference='',requester='Test',destination='Test',required_date='',pn=part['pn'],revision='0',quantity='1',description='Test')
+    assert result.status_code==302
+
+
+def test_missing_dxf_explains_pdf_only_and_case_ambiguity(app):
+    c=client_for(app)
+    missing=preview(c,files=[(PDF,'a.pdf')])
+    assert b'leave dxf_file blank' in missing.data
+    ambiguous=preview(c,'NEW,A,,drawing.pdf,\n',[(PDF,'One/DRAWING.PDF'),(PDF,'Two/Drawing.pdf')])
+    assert ambiguous.status_code==400 and b'Ambiguous filename' in ambiguous.data

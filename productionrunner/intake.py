@@ -88,7 +88,7 @@ def register_intake(app, db, roles_required, now):
         for key, limit in [('source_reference', 500), ('requester', 200), ('destination', 500), ('description', 4000)]:
             if len(data[key]) > limit or (not data[key] and (key != 'source_reference' or data['source'] != 'manual' and not erp_origin)):
                 abort(400, f'Provide {key} (up to {limit} characters).')
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', data['pn']) or not data['revision'] or len(data['revision']) > 40:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,63}', data['pn']) or not data['revision'] or len(data['revision']) > 40:
             abort(400, 'Provide one valid PN and a revision of up to 40 characters.')
         try:
             data['quantity'] = int(data['quantity'])

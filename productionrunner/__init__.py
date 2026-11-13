@@ -336,7 +336,7 @@ def create_app(config=None):
         part = find_part(db(), g.tenant['id'], part_id) if part_id else matching_part(db(), g.tenant['id'], pn, revision)
         if part:
             pn, revision = part['pn'], part['revision']
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', pn):
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,63}', pn):
             abort(400, 'Enter exactly one part number (letters, numbers, dot, underscore or hyphen).')
         if not revision or len(revision) > 40:
             abort(400, 'A revision of up to 40 characters is required.')

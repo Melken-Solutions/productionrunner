@@ -9,7 +9,7 @@
 <form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button name="action" value="confirm">Confirm import</button> <button class="secondary" name="action" value="cancel">Cancel preview</button></form></section>
 {% else %}
 {% if blocked %}<p class="alert" role="alert">Import blocked. Correct the rows below and upload again. Nothing was imported or staged.</p>{% endif %}
-<p>Upload a UTF-8 CSV and its PDF/DXF files. CSV file references can use a relative folder path or a unique filename. Duplicate filenames in different folders require their relative paths. New revisions require a PDF; a DXF is optional. Existing revisions may receive their first DXF. Identical files are skipped; differing files or descriptions are never overwritten.</p>
+<p>Upload a UTF-8 CSV and its PDF/DXF files. CSV file references can use a relative folder path or a unique filename. Filename capitalization is ignored only when the match is unique. Duplicate filenames in different folders require their relative paths. If importing PDFs without DXFs, leave the CSV’s dxf_file cells blank; add the DXFs later. Part numbers may contain slashes, such as STRIKE-DA-1/8-SS. New revisions require a PDF; a DXF is optional. Existing revisions may receive their first DXF. Identical files are skipped; differing files or descriptions are never overwritten.</p>
 <p><a class="button secondary" href="{{ url_for('import_template') }}">Download CSV template</a></p>
 <form method="post" enctype="multipart/form-data" class="card stack" data-bulk-import><input type="hidden" name="csrf" value="{{ session.csrf }}">
 <label>CSV mapping<input type="file" name="mapping" accept=".csv" required></label>

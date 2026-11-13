@@ -117,7 +117,7 @@ def register_parts(app, db, roles_required, now, lock_ticket, event):
             return render_template('part_new.html')
         pn, revision = request.form.get('pn', '').strip(), request.form.get('revision', '').strip()
         description = request.form.get('description', '').strip()
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', pn) or not revision or len(revision) > 40 or len(description) > 500:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,63}', pn) or not revision or len(revision) > 40 or len(description) > 500:
             abort(400, 'Provide one valid PN, revision (up to 40 characters), and description (up to 500 characters).')
         upload = request.files.get('drawing')
         link = request.form.get('drawing_url', '').strip()

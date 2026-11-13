@@ -81,6 +81,9 @@ def read_batch():
                 continue
             safe_path(name)
             matches = [name] if name in uploads else [path for path in uploads if path.endswith('/' + name)]
+            if not matches:
+                folded=name.casefold()
+                matches=[path for path in uploads if path.casefold()==folded or path.casefold().endswith('/'+folded)]
             if len(matches) > 1:
                 abort(400, 'Ambiguous filename: ' + name + '. Use its relative folder path in the CSV: ' + ', '.join(matches[:5]))
             if matches:
@@ -110,14 +113,20 @@ def review(conn, tenant, batch):
         if key in seen:
             item['errors'].append('Duplicate PN/revision in CSV.')
         seen.add(key)
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}', row['pn']) or not row['revision'] or len(row['revision']) > 40 or len(row['description']) > 500:
-            item['errors'].append('Invalid PN, missing/long revision, or description over 500 characters.')
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,63}', row['pn']):
+            item['errors'].append('PN must be 1–64 characters: letters, numbers, dots, underscores, hyphens or slashes; start with a letter or number.')
+        if not row['revision'] or len(row['revision']) > 40:
+            item['errors'].append('Revision is required and must be at most 40 characters.')
+        if len(row['description']) > 500:
+            item['errors'].append('Description exceeds 500 characters.')
         if not row['drawing_file'] and not row['dxf_file']:
             item['errors'].append('Map at least one file.')
         for field, kind in [('drawing_file', 'pdf'), ('dxf_file', 'dxf')]:
             name = row[field]
-            if name and (name not in batch['files'] or batch['files'][name]['kind'] != kind):
-                item['errors'].append(f'Missing or wrong file type: {name}')
+            if name and name not in batch['files']:
+                item['errors'].append(f'Missing or wrong file type: {name}. This {kind.upper()} was not found in the selected files. Check its name and folder.' + (' If importing only the drawing now, leave dxf_file blank in the CSV and add the DXF later.' if kind == 'dxf' else ''))
+            elif name and batch['files'][name]['kind'] != kind:
+                item['errors'].append(f'Wrong file type: {name}. This column requires {kind.upper()}.')
         existing = conn.execute('SELECT id,description,drawing_url,sha256 FROM part_revisions WHERE tenant_id=? AND pn=? AND revision=?', (tenant, *key)).fetchone()
         if not item['errors']:
             if existing:

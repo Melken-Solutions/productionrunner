@@ -5,7 +5,7 @@
  function update(){
    const chosen=[...files.files,...folder.files].filter(supported);
    const bytes=chosen.reduce((n,f)=>n+f.size,0);
-   status.textContent=`${chosen.length} PDF/DXF files selected · ${(bytes/1024/1024).toFixed(1)} MB. Folder subfolders are included. Review the preview before importing.`;
+   status.textContent=`${chosen.filter(f=>/\.pdf$/i.test(f.name)).length} PDFs and ${chosen.filter(f=>/\.dxf$/i.test(f.name)).length} DXFs selected · ${(bytes/1024/1024).toFixed(1)} MB. Folder subfolders are included. Review the preview before importing.`;
    files.setCustomValidity('');
    if(!chosen.length)files.setCustomValidity('Choose PDF/DXF files or a folder containing them.');
    else if(chosen.length>400||bytes>50*1024*1024)files.setCustomValidity('Split this selection into batches of at most 400 files and 50 MB.');

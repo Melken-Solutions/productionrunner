@@ -33,7 +33,7 @@ def register(app,db,roles_required,now):
         uploads={}
         if action=='edit':
             pn=request.form.get('pn','').strip();rev=request.form.get('revision','').strip();description=request.form.get('description','').strip()
-            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}',pn) or not 1<=len(rev)<=40 or len(description)>500:abort(400,'Provide a valid PN, revision and description.')
+            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,63}',pn) or not 1<=len(rev)<=40 or len(description)>500:abort(400,'Provide a valid PN, revision and description.')
             if used(db(),g.tenant['id'],part):abort(409,'This revision is already in use. Create a new revision instead.')
             for name,limit,ext in [('drawing',MAX_PDF,'.pdf'),('dxf',MAX_DXF,'.dxf')]:
                 f=request.files.get(name)
