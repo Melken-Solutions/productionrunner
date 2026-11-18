@@ -99,6 +99,8 @@ def finish_work(conn,tenant,ticket,operation,user,stamp,event,unit=None):
 
 
 def register_work_tracking(app,db,roles_required,now,event):
+    from .quantity_reports import register as register_quantity_reports
+    register_quantity_reports(app,db,roles_required)
     app.config.setdefault('WORK_CLOCK',now)
 
     def reasons():return list(REASONS)+[r[0] for r in db().execute('SELECT name FROM work_reasons WHERE tenant_id=? ORDER BY name',(g.tenant['id'],)) if r[0] not in REASONS]

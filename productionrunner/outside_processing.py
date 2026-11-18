@@ -17,7 +17,12 @@ def require_internal(conn, tenant, operation):
 
 def ledger(conn, tenant, operation):
     moves = [dict(r) for r in conn.execute('SELECT m.*,u.username FROM outside_moves m JOIN users u ON u.id=m.actor_id WHERE m.tenant_id=? AND m.operation_id=? ORDER BY m.id', (tenant, operation))]
+    po_records={}
+    for r in conn.execute("SELECT detail FROM events WHERE tenant_id=? AND action='outside_send' AND ticket_id IN (SELECT ticket_id FROM outside_steps WHERE tenant_id=? AND operation_id=?) ORDER BY id",(tenant,tenant,operation)):
+        d=json.loads(r['detail'])
+        if d.get('operation_id')==operation:po_records[d.get('record_id')]=d.get('purchase_order','')
     for m in moves:
+        m['purchase_order']=po_records.get(m['id'],'')
         m['units'] = json.loads(m['unit_ids'])
         m['inspection'] = conn.execute('SELECT i.*,u.username FROM outside_inspections i JOIN users u ON u.id=i.actor_id WHERE i.tenant_id=? AND i.receipt_id=? ORDER BY i.id DESC LIMIT 1', (tenant, m['id'])).fetchone()
         m['received'] = sum(r['quantity'] for r in moves if r['parent_id'] == m['id'])
@@ -124,6 +129,8 @@ def register_outside(app, db, roles_required, now, lock_ticket, event):
             moves=ledger(db(),g.tenant['id'],operation_id)
             units=db().execute('SELECT * FROM serial_units WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],ticket_id)).fetchall()
             notes=text('notes',4000);stamp=now();ids=[]
+            purchase_order=request.form.get('purchase_order',plan['reference'] or '').strip()
+            if len(purchase_order)>200 or any(ord(ch)<32 for ch in purchase_order):abort(400,'Purchase Order Number must be at most 200 characters without control characters.')
             if action in {'send','receive'}:
                 parent=None
                 if action=='receive':
@@ -158,7 +165,7 @@ def register_outside(app, db, roles_required, now, lock_ticket, event):
                     if units and (not set(ids)<=set(parent['units']) or received.intersection(ids)):abort(409,'Receive only outstanding serials from this shipment.')
                     if sum(m['quantity'] for m in receipts)+quantity>parent['quantity']:abort(409,'Receipt exceeds the outstanding shipment quantity.')
                 row=db().execute('INSERT INTO outside_moves(tenant_id,ticket_id,operation_id,kind,parent_id,quantity,unit_ids,actor_id,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(g.tenant['id'],ticket_id,operation_id,action,parent['id'] if parent else None,quantity,json.dumps(ids),g.user['id'],notes,stamp))
-                log(ticket_id,'outside_'+action,dict(operation_id=operation_id,record_id=row.lastrowid,quantity=quantity,serials=serials if units else [],notes=notes),ids)
+                log(ticket_id,'outside_'+action,dict(operation_id=operation_id,record_id=row.lastrowid,purchase_order=purchase_order if action=='send' else parent.get('purchase_order',''),quantity=quantity,serials=serials if units else [],notes=notes),ids)
                 if action=='send':
                     if units:
                         from .serials import update_unit_state
