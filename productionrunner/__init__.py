@@ -114,6 +114,8 @@ def create_app(config=None):
         if g.user and not g.tenant:
             session.clear()
             g.user = None
+        from .tv_devices import validate_session
+        validate_session(db())
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         if request.method == 'POST' and not secrets.compare_digest(session['csrf'], request.form.get('csrf', '')):

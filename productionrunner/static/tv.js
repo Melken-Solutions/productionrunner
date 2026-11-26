@@ -1,5 +1,7 @@
 "use strict";
 let snapshot=null,lastSuccess=0,page=0,loading=false,settings=JSON.parse(document.getElementById('initial-settings').textContent),nextPage=performance.now()+20000,signature='';
+const deviceVersion=document.body.dataset.deviceVersion;
+const feedURL=new URL(document.body.dataset.feed,location.href);if(deviceVersion)feedURL.searchParams.set('seen_version',deviceVersion);
 const freshness=document.getElementById('freshness');
 function text(tag,content,cls){const el=document.createElement(tag);el.textContent=content;if(cls)el.className=cls;return el;}
 function progressText(p){
@@ -54,7 +56,7 @@ function render(forceSingle=false){if(!snapshot)return;
 }
 function stale(message){freshness.className='stale';freshness.textContent=message+(snapshot?` Last update: ${new Date(snapshot.generated_at).toLocaleTimeString()}.`:' No data available.');}
 async function refresh(){if(loading)return;loading=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
- try{const response=await fetch(document.body.dataset.feed,{cache:'no-store',credentials:'same-origin',signal:controller.signal});if(!response.ok||response.redirected)throw Error();const data=await response.json();if(!Array.isArray(data.rows)||!data.settings||!data.summary)throw Error();snapshot=data;lastSuccess=performance.now();settings=data.settings;const next=JSON.stringify(settings);if(next!==signature){signature=next;page=0;nextPage=performance.now()+settings.seconds*1000;}freshness.className='';freshness.textContent=`LIVE · Updated ${new Date(data.generated_at).toLocaleTimeString()} · Refreshes every 15 seconds`;render();}
+ try{const response=await fetch(feedURL,{cache:'no-store',credentials:'same-origin',signal:controller.signal});if(deviceVersion&&(response.redirected||response.status===403||response.status===401)){document.getElementById('board').replaceChildren();location.replace('/tv/setup');return;}if(!response.ok||response.redirected)throw Error();const data=await response.json();if(deviceVersion&&data.device&&String(data.device.version)!==deviceVersion){location.replace('/tv/board');return;}if(!Array.isArray(data.rows)||!data.settings||!data.summary)throw Error();snapshot=data;lastSuccess=performance.now();settings=data.settings;const next=JSON.stringify(settings);if(next!==signature){signature=next;page=0;nextPage=performance.now()+settings.seconds*1000;}freshness.className='';freshness.textContent=`LIVE · Updated ${new Date(data.generated_at).toLocaleTimeString()} · Refreshes every 15 seconds`;render();}
  catch(e){stale('NOT LIVE — connection or sign-in needs attention. Do not rely on displayed status.');}finally{clearTimeout(timer);loading=false;}}
 setInterval(()=>{const now=performance.now();if(snapshot&&now>=nextPage){page++;nextPage=now+settings.seconds*1000;render();}document.getElementById('rotation').textContent=`Next page in ${Math.max(0,Math.ceil((nextPage-now)/1000))}s`;if(lastSuccess&&now-lastSuccess>30000)stale('STALE — do not rely on displayed status.');},1000);
 setInterval(refresh,15000);window.addEventListener('resize',render);document.fonts.ready.then(render);window.addEventListener('online',refresh);window.addEventListener('offline',()=>stale('OFFLINE — do not rely on displayed status.'));

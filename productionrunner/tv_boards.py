@@ -86,13 +86,16 @@ def board_data(conn,tenant_id,station_id=None):
 def register_tv(app,db,roles_required,now):
     from .tv_settings import register,board_settings
     register(app,db,roles_required,now)
+    from .tv_devices import register as register_devices
+    register_devices(app,db,roles_required,now)
     @app.before_request
     def restrict_display_account():
-        if 'display' in getattr(g,'roles',[]) and request.endpoint not in {'static','login','logout','tv_boards','tv_board','tv_data','brand_logo','account_security'}:
+        if g.tv_device and request.endpoint=='account_security': abort(403)
+        if 'display' in getattr(g,'roles',[]) and request.endpoint not in {'static','login','logout','tv_boards','tv_board','tv_data','brand_logo','account_security','tv_setup','tv_pair_start','tv_pair_status'}:
             abort(403,'This display account can only view TV boards.')
 
     def selected_station():
-        value=request.args.get('station')
+        value=g.tv_device['station_id'] if g.tv_device else request.args.get('station')
         if not value:return None
         station=db().execute('SELECT * FROM stations WHERE tenant_id=? AND id=?',(g.tenant['id'],value)).fetchone()
         if not station:abort(404,'Unknown station.')
@@ -101,6 +104,7 @@ def register_tv(app,db,roles_required,now):
     @app.get('/tv')
     @roles_required()
     def tv_boards():
+        if g.tv_device:return redirect(url_for('tv_board'))
         stations=db().execute('SELECT * FROM stations WHERE tenant_id=? AND active=1 ORDER BY name',(g.tenant['id'],)).fetchall()
         return render_template('tv_select.html',stations=stations)
 
@@ -114,6 +118,8 @@ def register_tv(app,db,roles_required,now):
     @app.get('/tv/data')
     @roles_required()
     def tv_data():
+        from .tv_devices import heartbeat
+        device=heartbeat(db(),now)
         station=selected_station()
         config=board_settings(db())
         # One read transaction prevents a board from mixing two production states.
@@ -141,4 +147,4 @@ def register_tv(app,db,roles_required,now):
                 row['activity']='working' if any(s['action']!='pause' for s in relevant) else 'paused' if relevant else 'waiting'
                 row['active_operators']=sorted({s['current_operator'] for s in relevant})
         brand=db().execute('SELECT display_name FROM organization_branding WHERE tenant_id=?',(g.tenant['id'],)).fetchone()
-        return jsonify(organization=(brand['display_name'] if brand and brand['display_name'] else g.tenant['name']),station=station['name'] if station else 'Whole shop',active=bool(station['active']) if station else True,generated_at=now(),rows=rows,settings=config,summary=summary)
+        return jsonify(device=device,organization=(brand['display_name'] if brand and brand['display_name'] else g.tenant['name']),station=station['name'] if station else 'Whole shop',active=bool(station['active']) if station else True,generated_at=now(),rows=rows,settings=config,summary=summary)

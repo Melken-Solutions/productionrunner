@@ -393,3 +393,8 @@ Every ticket in the production queue now has an **Outside processing** link,
 regardless of whether a vendor plan exists. Ticket views also have a prominent
 Outside processing section. Existing released tickets remain viewable, but their
 routing plans cannot be rewritten after release.
+
+
+### Remote TV pairing
+
+Dedicated TV browsers can open `/tv/setup` and be approved from **Admin → TV devices** using a temporary code. Admins assign the board, manage its layout, request a page reload and revoke device access. Pairing is browser-bound, single-use and display-only. See [TV pairing and Raspberry Pi maintenance](docs/tv-device-pairing.md) for installation and acceptance checks. Apply the additive TV device migration before deploying this version.
