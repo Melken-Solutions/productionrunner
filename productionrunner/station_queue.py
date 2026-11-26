@@ -81,7 +81,7 @@ def board_rows(entries):
     for item in entries:
         key=(item['ticket_id'],item['stage'],item['operation_id'])
         if key not in grouped:
-            grouped[key]=dict(planned_day=item['planned_day'],ticket_id=item['ticket_id'],pn=item['pn'],revision=item['revision'],quantity=item['order_quantity'],hot=item['hot'],accepted=item['accepted'],operation=item['operation'],operator=item['operator'],due=item['due'],shipment=item['shipment'],**dict.fromkeys(['ready','upcoming','held','inspection','planning','running','paused','setup','blocked'],0))
+            grouped[key]=dict(operation_id=item['operation_id'],planned_day=item['planned_day'],ticket_id=item['ticket_id'],pn=item['pn'],revision=item['revision'],quantity=item['order_quantity'],hot=item['hot'],accepted=item['accepted'],operation=item['operation'],operator=item['operator'],due=item['due'],shipment=item['shipment'],**dict.fromkeys(['ready','upcoming','held','inspection','planning','running','paused','setup','blocked'],0))
         row=grouped[key];status=item['status'];amount=item['quantity']
         bucket='ready' if status in {'running','paused'} else 'upcoming' if status in {'setup','blocked'} else status
         row[bucket]+=amount

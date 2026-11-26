@@ -1,7 +1,7 @@
 """Audited per-login TV presentation settings; display accounts remain read-only."""
 import json
 from flask import g,request,abort,render_template,redirect,url_for
-DEFAULTS=dict(orientation='auto',layout='two',text_size='standard',cards=4,seconds=20,show_operator=False,show_start=False)
+DEFAULTS=dict(orientation='auto',layout='two',text_size='standard',cards=4,seconds=20,show_operator=False,show_start=False,show_progress=True,pin_hot=False)
 
 
 def settings(conn,tenant,user):
@@ -11,11 +11,11 @@ def settings(conn,tenant,user):
 
 def parse(form):
     data={k:form.get(k,DEFAULTS[k]) for k in ('orientation','layout','text_size')}
-    if data['orientation'] not in {'auto','portrait','landscape'} or data['layout'] not in {'single','two','priority'} or data['text_size'] not in {'large','standard','compact'}:abort(400,'Choose valid TV layout presets.')
+    if data['orientation'] not in {'auto','portrait','landscape'} or data['layout'] not in {'single','two','priority','activity'} or data['text_size'] not in {'large','standard','compact'}:abort(400,'Choose valid TV layout presets.')
     try:data.update(cards=int(form.get('cards',4)),seconds=int(form.get('seconds',20)))
     except (ValueError,TypeError):abort(400,'Enter whole numbers for cards and page duration.')
     if not 1<=data['cards']<=10 or not 10<=data['seconds']<=60:abort(400,'Choose 1–10 cards per column and 10–60 seconds per page.')
-    data.update({k:form.get(k)=='yes' for k in ('show_operator','show_start')})
+    data.update({k:form.get(k)=='yes' for k in ('show_operator','show_start','show_progress','pin_hot')})
     return data
 
 

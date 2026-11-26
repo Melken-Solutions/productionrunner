@@ -109,7 +109,7 @@ def register_tv(app,db,roles_required,now):
     def tv_board():
         station=selected_station()
         config=board_settings(db())
-        return render_template('tv_board.html',station=station,config=config,feed=url_for('tv_data',**{k:v for k,v in request.args.items() if k in {'station','screen','preview','orientation','layout','text_size','cards','seconds','show_operator','show_start'}}))
+        return render_template('tv_board.html',station=station,config=config,feed=url_for('tv_data',**{k:v for k,v in request.args.items() if k in {'station','screen','preview','orientation','layout','text_size','cards','seconds','show_operator','show_start','show_progress','pin_hot'}}))
 
     @app.get('/tv/data')
     @roles_required()
@@ -123,11 +123,22 @@ def register_tv(app,db,roles_required,now):
             from datetime import datetime,timezone
             today=datetime.now(timezone.utc).date().isoformat()
             summary=dict(jobs=len({r['ticket_id'] for r in rows}),hot=len({r['ticket_id'] for r in rows if r['hot'] is not None}),held=len({r['ticket_id'] for r in rows if r.get('held')}),due=0,shipping=0)
+            from .tv_progress import quantities,load
+            from .work_tracking import open_sessions
+            sessions=open_sessions(db(),g.tenant['id']);job_quantities={}
+            progress_data=load(db(),g.tenant['id'],{r['ticket_id'] for r in rows})
             for tid in {r['ticket_id'] for r in rows}:
                 t=db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',(g.tenant['id'],tid)).fetchone()
                 req=db().execute('SELECT required_date FROM intake_requests WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],tid)).fetchone()
                 if req and req['required_date'] and req['required_date']<=today:summary['due']+=1
                 delivery=progress(db(),g.tenant['id'],t)
+                job_quantities[tid]=quantities(db(),g.tenant['id'],t,delivery,progress_data[tid])
                 if delivery['available'] or delivery['waiting']:summary['shipping']+=1
+            for row in rows:
+                row['whole_shop']=station is None
+                row['progress']=job_quantities[row['ticket_id']]
+                relevant=[s for s in sessions if s['ticket_id']==row['ticket_id'] and (station is None or (s['station_id']==station['id'] and s['operation_id']==row.get('operation_id')))]
+                row['activity']='working' if any(s['action']!='pause' for s in relevant) else 'paused' if relevant else 'waiting'
+                row['active_operators']=sorted({s['current_operator'] for s in relevant})
         brand=db().execute('SELECT display_name FROM organization_branding WHERE tenant_id=?',(g.tenant['id'],)).fetchone()
         return jsonify(organization=(brand['display_name'] if brand and brand['display_name'] else g.tenant['name']),station=station['name'] if station else 'Whole shop',active=bool(station['active']) if station else True,generated_at=now(),rows=rows,settings=config,summary=summary)
