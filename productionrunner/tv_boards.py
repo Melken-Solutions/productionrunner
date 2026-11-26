@@ -84,6 +84,8 @@ def board_data(conn,tenant_id,station_id=None):
 
 
 def register_tv(app,db,roles_required,now):
+    from .tv_settings import register,board_settings
+    register(app,db,roles_required,now)
     @app.before_request
     def restrict_display_account():
         if 'display' in getattr(g,'roles',[]) and request.endpoint not in {'static','login','logout','tv_boards','tv_board','tv_data','brand_logo','account_security'}:
@@ -106,15 +108,26 @@ def register_tv(app,db,roles_required,now):
     @roles_required()
     def tv_board():
         station=selected_station()
-        return render_template('tv_board.html',station=station)
+        config=board_settings(db())
+        return render_template('tv_board.html',station=station,config=config,feed=url_for('tv_data',**{k:v for k,v in request.args.items() if k in {'station','screen','preview','orientation','layout','text_size','cards','seconds','show_operator','show_start'}}))
 
     @app.get('/tv/data')
     @roles_required()
     def tv_data():
         station=selected_station()
+        config=board_settings(db())
         # One read transaction prevents a board from mixing two production states.
         with db():
             db().execute('BEGIN')
             rows=board_data(db(),g.tenant['id'],station['id'] if station else None)
+            from datetime import datetime,timezone
+            today=datetime.now(timezone.utc).date().isoformat()
+            summary=dict(jobs=len({r['ticket_id'] for r in rows}),hot=len({r['ticket_id'] for r in rows if r['hot'] is not None}),held=len({r['ticket_id'] for r in rows if r.get('held')}),due=0,shipping=0)
+            for tid in {r['ticket_id'] for r in rows}:
+                t=db().execute('SELECT * FROM tickets WHERE tenant_id=? AND id=?',(g.tenant['id'],tid)).fetchone()
+                req=db().execute('SELECT required_date FROM intake_requests WHERE tenant_id=? AND ticket_id=?',(g.tenant['id'],tid)).fetchone()
+                if req and req['required_date'] and req['required_date']<=today:summary['due']+=1
+                delivery=progress(db(),g.tenant['id'],t)
+                if delivery['available'] or delivery['waiting']:summary['shipping']+=1
         brand=db().execute('SELECT display_name FROM organization_branding WHERE tenant_id=?',(g.tenant['id'],)).fetchone()
-        return jsonify(organization=(brand['display_name'] if brand and brand['display_name'] else g.tenant['name']),station=station['name'] if station else 'Whole shop',active=bool(station['active']) if station else True,generated_at=now(),rows=rows)
+        return jsonify(organization=(brand['display_name'] if brand and brand['display_name'] else g.tenant['name']),station=station['name'] if station else 'Whole shop',active=bool(station['active']) if station else True,generated_at=now(),rows=rows,settings=config,summary=summary)

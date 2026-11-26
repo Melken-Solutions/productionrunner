@@ -1,0 +1,11 @@
+# TV screen layouts
+
+Organization Admin → TV screen layouts (also available from TV boards) configures each dedicated display login. Give each physical TV its own login: settings follow the account, not the browser. An admin can use My admin preview to configure their own preview without changing shared screens.
+
+Choose Auto, Landscape or Portrait, and Single column, Two equal columns or HOT / Normal. This controls presentation; it does not rotate the operating system. Auto follows viewport shape. Portrait/narrow displays use one column. Two columns read down the left and then down the right. In HOT / Normal mode each group cycles through its own pages independently. When one group is empty, the populated queue uses both columns.
+
+Large, Standard and Compact text presets retain their selected font size. Maximum cards per column (1–10) is an upper bound: the board measures card height and uses fewer cards when needed. Additional cards appear on subsequent pages. If a card cannot fit in two columns, the board tries one wide column; if the window is still too short it shows a clear fit message instead of clipping a job. Full screen provides the most usable height. Start dates and assigned operators are optional details. Long operation descriptions are limited to two lines; open the traveler for full details.
+
+Rotation is configurable from 10–60 seconds. Page indicators and a countdown explain what is visible. Summary counts are distinct jobs in the selected view: total, HOT, due/overdue by required date in UTC, held, and accepted work awaiting packing/shipping. Summary numbers count jobs, card quantities count pieces. A station can have several entries for a single job. Held work is highlighted within the queue rather than hidden on a separate sidebar.
+
+Preview without saving opens a live read-only preview tab. Save screen settings persists an audited, version-checked configuration. Connected boards load it on the next 15-second refresh. Display users cannot edit settings or preview another account. Tenant boundaries apply to settings and queue data. Existing offline, expired-login and stale-data warnings remain visible; refreshing data and page rotation do not extend production permissions.
