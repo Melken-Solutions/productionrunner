@@ -1,0 +1,1 @@
+(() => {const key=document.currentScript.dataset.dateParam||'day';const url=new URL(location.href);if(url.searchParams.has(key))return;const d=new Date();url.searchParams.set(key,`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);location.replace(url);})();

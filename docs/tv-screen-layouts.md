@@ -1,0 +1,21 @@
+# TV screen layouts
+
+Organization Admin → TV screen layouts (also available from TV boards) configures each dedicated display login. Give each physical TV its own login: settings follow the account, not the browser. An admin can use My admin preview to configure their own preview without changing shared screens.
+
+Choose Auto, Landscape or Portrait, and Single column, Two equal columns or HOT / Normal. This controls presentation; it does not rotate the operating system. Auto follows viewport shape. Portrait/narrow displays use one column. Two columns read down the left and then down the right. In HOT / Normal mode each group cycles through its own pages independently. When one group is empty, the populated queue uses both columns.
+
+Large, Standard and Compact text presets retain their selected font size. Maximum cards per column (1–10) is an upper bound: the board measures card height and uses fewer cards when needed. Additional cards appear on subsequent pages. If a card cannot fit in two columns, the board tries one wide column; if the window is still too short it shows a clear fit message instead of clipping a job. Full screen provides the most usable height. Start dates and assigned operators are optional details. Long operation descriptions are limited to two lines; open the traveler for full details.
+
+Rotation is configurable from 10–60 seconds. Page indicators and a countdown explain what is visible. Summary counts are distinct jobs in the selected view: total, HOT, due/overdue by required date in UTC, held, and accepted work awaiting packing/shipping. Summary numbers count jobs, card quantities count pieces. A station can have several entries for a single job. Held work is highlighted within the queue rather than hidden on a separate sidebar.
+
+Preview without saving opens a live read-only preview tab. Save screen settings persists an audited, version-checked configuration. Connected boards load it on the next 15-second refresh. Display users cannot edit settings or preview another account. Tenant boundaries apply to settings and queue data. Existing offline, expired-login and stale-data warnings remain visible; refreshing data and page rotation do not extend production permissions.
+
+## Working now, quantity progress and pinned HOT work
+
+The Working now / Up next layout puts jobs with open recorded work sessions in the left column. Paused sessions remain there with a Paused label. The right column contains other work, including future, unreleased and blocked jobs; it does not authorize starting them. A stopped session moves back to the waiting queue. Station views match sessions to the displayed operation and station. Whole-shop views consider sessions across the job. Portrait uses a single paged queue with active entries first. A job can have different station entries in both groups.
+
+Whole-job progress is an optional card detail, enabled by default. Shipped, packed awaiting departure, accepted awaiting packing, inspection, held, underway and not-started quantities are mutually exclusive. Ordered quantity is the target, not another bucket. For example: 580 ordered = 50 shipped + 100 underway + 430 not started. Scrap/replacement travelers do not inflate the order total; scrap history remains available elsewhere. If recorded quantities do not balance, the card requests review rather than presenting a misleading progress line.
+
+Underway means a traveler/lot has recorded work, a completed step, or vendor custody. Stopped work is still underway, but is not Working now. Inherited work history follows lot splits. Quantities describe the whole traveler/lot, not a live piece counter; split lots when finer partial-run tracking is needed. Station screens repeat clearly labeled whole-job progress, so do not add progress lines across operation cards.
+
+Pin highest-priority HOT job adds one compact persistent banner above the rotating queue. It uses the existing HOT rank/date ordering and changes when the leading eligible job changes or leaves the view. The job’s full card remains in the rotating list. No HOT work means no banner. This option and progress visibility are saved separately for each TV login and are available in Preview.

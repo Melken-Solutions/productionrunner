@@ -1,0 +1,4 @@
+<style nonce="{{ g.brand_nonce }}">
+:root{--brand-primary:{{ branding.primary_color }};--brand-primary-text:{{ brand_foreground(branding.primary_color) }};--brand-accent:{{ branding.accent_color }};--brand-accent-text:{{ brand_foreground(branding.accent_color) }}}
+</style>
+<link rel="stylesheet" href="{{ url_for('static',filename='branding.css') }}">

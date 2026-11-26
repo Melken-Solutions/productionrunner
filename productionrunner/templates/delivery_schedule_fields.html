@@ -1,0 +1,11 @@
+<div class="stack delivery-schedule" data-total="{{ schedule_total }}">
+{% if schedule_edit %}<input type="hidden" name="delivery_mode" value="staged">{% else %}<label>How should we deliver this order?<select name="delivery_mode"><option value="together" {% if schedule.mode=='together' %}selected{% endif %}>Ship all together</option><option value="staged" {% if schedule.mode=='staged' %}selected{% endif %}>Produce &amp; ship in stages</option></select></label>{% endif %}
+<div data-shipment-fields class="stack" {% if schedule.mode!='staged' %}hidden{% endif %}>
+<p>Enter shipment quantities and dates, earliest first. One shipment can combine several production lots.</p>
+<div data-shipment-rows class="stack">{% for shipment in schedule.shipments %}<div class="grid shipment-row"><label>Shipment quantity<input name="shipment_quantity" type="number" min="1" max="10000" value="{{ shipment.quantity }}"></label><label>Required ship date<input name="shipment_date" type="date" value="{{ shipment.ship_date }}"></label><button type="button" class="secondary" data-remove-shipment>Remove shipment</button></div>{% endfor %}</div>
+<button type="button" class="secondary" data-add-shipment>Add another shipment</button>
+<p data-schedule-balance role="status" aria-live="polite"></p>
+{% if not schedule_edit %}<p class="muted">You can save an incomplete draft. Schedule the entire quantity before approval. Lot sizes are chosen separately when creating the JobRunner.</p>{% endif %}
+</div>
+<template data-shipment-row><div class="grid shipment-row"><label>Shipment quantity<input name="shipment_quantity" type="number" min="1" max="10000"></label><label>Required ship date<input name="shipment_date" type="date"></label><button type="button" class="secondary" data-remove-shipment>Remove shipment</button></div></template>
+</div>

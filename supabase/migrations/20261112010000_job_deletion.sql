@@ -1,0 +1,71 @@
+-- Explicit server-only purge; ordinary immutable-history guards remain in force.
+CREATE OR REPLACE FUNCTION productionrunner.delete_job(p_tenant integer,p_ticket text,p_actor integer,p_epoch integer,p_version integer,p_reason text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO pg_catalog, productionrunner AS $$
+DECLARE job productionrunner.tickets%ROWTYPE; r record; triggers text[]:=ARRAY[]::text[]; command text; detail text;
+BEGIN
+ PERFORM pg_advisory_xact_lock(735140219);
+ IF NOT EXISTS(SELECT 1 FROM productionrunner.memberships m LEFT JOIN productionrunner.membership_controls c ON c.tenant_id=m.tenant_id AND c.user_id=m.user_id WHERE m.tenant_id=p_tenant AND m.user_id=p_actor AND string_to_array(m.roles,',') && ARRAY['admin','planner'] AND COALESCE(c.session_epoch,0)=p_epoch) THEN RAISE EXCEPTION 'Admin or planner access required' USING ERRCODE='42501'; END IF;
+ SELECT * INTO job FROM productionrunner.tickets WHERE tenant_id=p_tenant AND id=p_ticket FOR UPDATE;
+ IF NOT FOUND OR job.version<>p_version THEN RAISE EXCEPTION 'Job changed or unavailable' USING ERRCODE='23514'; END IF;
+ IF p_reason IS NULL OR length(trim(p_reason)) NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Deletion reason required' USING ERRCODE='23514'; END IF;
+ IF EXISTS(SELECT 1 FROM productionrunner.work_sessions s JOIN productionrunner.work_events e ON e.id=(SELECT max(id) FROM productionrunner.work_events WHERE tenant_id=s.tenant_id AND session_id=s.id) WHERE s.tenant_id=p_tenant AND s.ticket_id=p_ticket AND e.action IN ('start','resume','pause')) THEN RAISE EXCEPTION 'Stop active work before deleting' USING ERRCODE='23514'; END IF;
+ IF EXISTS(SELECT 1 FROM productionrunner.return_repairs WHERE tenant_id=p_tenant AND (ticket_id=p_ticket OR repair_ticket_id=p_ticket)) THEN RAISE EXCEPTION 'Linked return repair must remain traceable' USING ERRCODE='23514'; END IF;
+ IF EXISTS(SELECT 1 FROM productionrunner.shipping_boxes WHERE tenant_id=p_tenant AND ticket_id=p_ticket AND load_id IS NOT NULL) OR EXISTS(SELECT 1 FROM productionrunner.shipping_departures WHERE tenant_id=p_tenant AND ticket_id=p_ticket) THEN RAISE EXCEPTION 'Remove job from shipping load before deletion' USING ERRCODE='23514'; END IF;
+ detail=json_build_object('ticket_id',job.id,'pn',job.pn,'revision',job.revision,'quantity',job.quantity,'state',job.state,'reason',p_reason)::text;
+ -- Only this transaction can bypass these table triggers. Foreign keys stay enabled.
+ FOR r IN SELECT t.tgname,c.relname FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='productionrunner' AND NOT t.tgisinternal AND t.tgenabled='O' AND c.relname IN ('completion_assignments','customer_return_reviews','customer_return_units','first_piece_results','fulfillment_check_results','fulfillment_reversals','fulfillment_unit_entries','fulfillment_units','inspections','job_message_reads','job_messages','lot_check_results','operation_assignments','outside_inspections','return_closure_events','rework_cases','shipping_boxes','shipping_departures','ticket_cancellations','ticket_custom_fields','ticket_dispatch','ticket_drawings','ticket_materials','ticket_priorities','ticket_workflow','unit_completions','unit_event_links','unit_inspections','work_time_corrections','customer_returns','events','fulfillment_checks','job_plans','job_threads','outside_moves','production_lots','shipping_plans','work_events','fulfillment_records','lot_jobs','outside_steps','work_sessions','operations','serial_units','tickets','intake_requests') ORDER BY c.relname,t.tgname LOOP
+  EXECUTE format('ALTER TABLE productionrunner.%I DISABLE TRIGGER %I',r.relname,r.tgname);
+  triggers=array_append(triggers,format('ALTER TABLE productionrunner.%I ENABLE TRIGGER %I',r.relname,r.tgname));
+ END LOOP;
+ INSERT INTO productionrunner.intake_events(tenant_id,request_id,actor_id,action,detail,created_at) SELECT p_tenant,id,p_actor,'job_deleted',detail,clock_timestamp()::text FROM productionrunner.intake_requests WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ UPDATE productionrunner.intake_requests SET ticket_id=NULL,status='cancelled',version=version+1 WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.completion_assignments WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.customer_return_reviews WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.customer_return_units WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.first_piece_results WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.fulfillment_check_results WHERE tenant_id=p_tenant AND check_id IN (SELECT id FROM fulfillment_checks WHERE ticket_id=p_ticket);
+ DELETE FROM productionrunner.fulfillment_reversals WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.fulfillment_unit_entries WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.fulfillment_units WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.inspections WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.job_message_reads WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.job_messages WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.lot_check_results WHERE tenant_id=p_tenant AND check_id IN (SELECT id FROM fulfillment_checks WHERE ticket_id=p_ticket);
+ DELETE FROM productionrunner.operation_assignments WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.outside_inspections WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.return_closure_events WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.rework_cases WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.shipping_boxes WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.shipping_departures WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.ticket_cancellations WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.ticket_custom_fields WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.ticket_dispatch WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.ticket_drawings WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.ticket_materials WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.ticket_priorities WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.ticket_workflow WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.unit_completions WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.unit_event_links WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.unit_inspections WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.work_time_corrections WHERE tenant_id=p_tenant AND event_id IN (SELECT e.id FROM work_events e JOIN work_sessions s ON s.id=e.session_id AND s.tenant_id=e.tenant_id WHERE s.ticket_id=p_ticket);
+ DELETE FROM productionrunner.customer_returns WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.events WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.fulfillment_checks WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.job_plans WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.job_threads WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.outside_moves WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.production_lots WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.shipping_plans WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.work_events WHERE tenant_id=p_tenant AND session_id IN (SELECT id FROM work_sessions WHERE ticket_id=p_ticket);
+ DELETE FROM productionrunner.fulfillment_records WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.lot_jobs WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.outside_steps WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.work_sessions WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.operations WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.serial_units WHERE tenant_id=p_tenant AND ticket_id=p_ticket;
+ DELETE FROM productionrunner.tickets WHERE tenant_id=p_tenant AND id=p_ticket;
+ FOREACH command IN ARRAY triggers LOOP EXECUTE command; END LOOP;
+ INSERT INTO productionrunner.auth_events(tenant_id,user_id,action,actor,detail,created_at) VALUES(p_tenant,p_actor,'job_deleted','user:'||p_actor,detail,clock_timestamp()::text);
+END $$;
+REVOKE ALL ON FUNCTION productionrunner.delete_job(integer,text,integer,integer,integer,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION productionrunner.delete_job(integer,text,integer,integer,integer,text) TO productionrunner_runtime;

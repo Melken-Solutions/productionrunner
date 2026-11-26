@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="card"><h1>Job deleted</h1><p>{{ ticket.id }} · {{ ticket.pn }} has been permanently removed.</p><a class="button" href="{{ url_for('index') }}">Back to jobs</a><a class="button secondary" href="{{ url_for('intake_queue') }}">Requests</a></section>{% endblock %}

@@ -1,0 +1,4 @@
+{% set schedule=request_delivery_schedule(entry.id) %}
+<section class="card"><h2>Delivery plan · {{ 'Produce & ship in stages' if schedule.mode=='staged' else 'Ship all together' }}</h2>
+{% if schedule.mode=='staged' %}<table><thead><tr><th>Shipment</th><th>Quantity</th><th>Ship by</th></tr></thead><tbody>{% for s in schedule.shipments %}<tr><td>{{ loop.index }}</td><td>{{ s.quantity }}</td><td>{{ s.ship_date }}</td></tr>{% endfor %}</tbody></table><p><strong>{{ schedule.shipments|sum(attribute='quantity') }} / {{ entry.quantity }} scheduled · {{ entry.quantity-schedule.shipments|sum(attribute='quantity') }} remaining to schedule</strong></p><p>Each shipment follows the approved route, inspection and shipping checks. The next outstanding shipment becomes the production target automatically.</p>{% endif %}
+</section>

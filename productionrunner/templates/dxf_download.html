@@ -1,0 +1,4 @@
+{% if dxf_for(dxf_part_id) %}
+<form method="post" action="{{ url_for('download_dxf', part_id=dxf_part_id) }}"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button>Download DXF for laser</button></form>
+<p>Verify the PN/revision and setup in your laser software before production. Downloading does not mark an operation complete.</p>
+{% else %}<p>No DXF attached to this part revision yet.</p>{% endif %}

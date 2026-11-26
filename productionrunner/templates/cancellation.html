@@ -1,0 +1,1 @@
+{% set cancelled = cancellation_for(ticket) %}{% if cancelled %}<section class="alert"><h2>CANCELLED — stop work</h2><p>{{ cancelled.reason }}</p><small>{{ cancelled.created_at }} · Production history is retained. Notify the shop floor and segregate remaining material.</small></section>{% endif %}

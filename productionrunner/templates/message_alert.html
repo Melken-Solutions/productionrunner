@@ -1,0 +1,1 @@
+{% if g.tenant and ('operator' in g.roles or 'planner' in g.roles or 'admin' in g.roles) %}<a href="{{ url_for('job_inbox') }}" data-message-alert data-feed="{{ url_for('job_unread') }}" aria-live="polite">Messages <span data-message-count>{{ job_message_count() }}</span></a><script src="{{ url_for('static',filename='message_alert.js') }}" defer></script>{% endif %}
